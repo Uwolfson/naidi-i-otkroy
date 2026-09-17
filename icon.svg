@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFE7F2"/>
+      <stop offset="0.5" stop-color="#E7F0E6"/>
+      <stop offset="1" stop-color="#F6E9D2"/>
+    </linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E4D2AE"/>
+      <stop offset="1" stop-color="#CDB88F"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D79A5C"/>
+      <stop offset="1" stop-color="#A46E39"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <circle cx="404" cy="104" r="44" fill="#FFD98A"/>
+  <path d="M-40 400 Q256 316 552 400 L552 512 L-40 512 Z" fill="url(#soil)"/>
+
+  <g>
+    <ellipse cx="256" cy="404" rx="118" ry="20" fill="#000" opacity="0.14"/>
+    <rect x="148" y="252" width="216" height="152" rx="16" fill="url(#wood)"/>
+    <rect x="132" y="216" width="248" height="56" rx="16" fill="#E8B173"/>
+    <rect x="236" y="216" width="40" height="188" fill="#E8952F"/>
+    <path d="M256 216 C256 176 216 160 200 180 C186 198 220 214 256 216 Z" fill="#E8952F"/>
+    <path d="M256 216 C256 176 296 160 312 180 C326 198 292 214 256 216 Z" fill="#F0A94A"/>
+    <circle cx="256" cy="208" r="17" fill="#C7761A"/>
+  </g>
+</svg>

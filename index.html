@@ -4,14 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#CFE7F2">
+<meta name="description" content="Прототип игры-угадайки для детей 1-3 лет">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="description" content="Прототип игры-угадайки для детей 1-3 лет">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Найди и открой">
 <style>
   /* правила для автономного запуска вне Claude */
   html{color-scheme:light;height:100%;}
-  body{margin:0;overscroll-behavior:none;touch-action:manipulation;}
+  body{margin:0;overscroll-behavior:none;}
   img{max-width:100%}
   [hidden]{display:none!important}
 </style>
@@ -39,17 +43,25 @@
     --r-md:18px;
   }
 
-  html,body{height:100%;}
+  /* Экран прибит гвоздями: ребёнок лупит по планшету ладонями, и любая
+     протяжка, щипок или долгое нажатие не должны сдвинуть картинку,
+     вызвать «резину», зум, выделение текста или контекстное меню. */
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none;}
   body{
     margin:0;
+    position:fixed;top:0;left:0;right:0;bottom:0;
     background:var(--sky-top);
     color:var(--ink);
     font-family:"Nunito","Segoe UI",system-ui,sans-serif;
-    overflow:hidden;
+    touch-action:none;
     -webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;
     user-select:none;
     -webkit-user-select:none;
   }
+  #app{touch-action:none;}
+  /* исключение: родительским листам нужен вертикальный скролл */
+  .sheet{touch-action:pan-y;-webkit-overflow-scrolling:touch;}
   button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;}
 
   /* ─── Scene ─────────────────────────────────────────── */
@@ -419,6 +431,42 @@
 (function(){
   "use strict";
 
+  /* ── Замок жестов ───────────────────────────────────
+     Всё, что может увезти экран из-под ребёнка, отключено на корню:
+     протяжки и «резина», щипковый зум (Safari игнорирует user-scalable=no
+     начиная с iOS 10, поэтому щипок глушится отдельно), зум по двойному
+     тапу, контекстное меню от долгого нажатия, перетаскивание картинок.
+     Скролл оставлен единственному месту, где он нужен, — листам родителя. */
+  function inSheet(node){
+    return !!(node && node.closest && node.closest(".sheet"));
+  }
+  document.addEventListener("touchmove", function(e){
+    if(inSheet(e.target) && e.touches.length === 1) return;
+    if(e.cancelable) e.preventDefault();
+  }, {passive:false});
+  ["gesturestart","gesturechange","gestureend"].forEach(function(name){
+    document.addEventListener(name, function(e){ e.preventDefault(); }, {passive:false});
+  });
+  document.addEventListener("dblclick", function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  document.addEventListener("dragstart", function(e){ e.preventDefault(); });
+
+  /* Ладонь на планшете. Три и больше одновременных касания — это уже не
+     палец, а положенная рука: такие нажатия не засчитываем. Порог по
+     площади касания сознательно высокий — лучше пропустить ладонь, чем
+     не засчитать честный тап толстым детским пальцем. Значение просится
+     на подстройку по живым устройствам, на глаз его не выставить. */
+  var palmDown = false;
+  document.addEventListener("touchstart", function(e){
+    var t = e.changedTouches && e.changedTouches[0];
+    var r = t ? Math.max(t.radiusX || 0, t.radiusY || 0) : 0;
+    palmDown = e.touches.length > 2 || r > 70;
+  }, {passive:true});
+  document.addEventListener("touchend", function(e){
+    // сброс с задержкой: click приходит уже после touchend
+    if(!e.touches.length) setTimeout(function(){ palmDown = false; }, 60);
+  }, {passive:true});
+
   /* ── Content catalogue ────────────────────────────────
      In production this is a data file, one record per object:
      art asset, spoken name, reaction clip, category. Adding an
@@ -665,6 +713,7 @@
   }
 
   function onChoose(e){
+    if(palmDown) return;
     var el = e.currentTarget;
     if(el.dataset.taken) return;
     el.dataset.taken = "1";
@@ -780,7 +829,7 @@
   }
 
   function onPick(e){
-    if(busy) return;
+    if(busy || palmDown) return;
     var el = e.currentTarget;
     var item = BY_ID[el.dataset.id];
     ac();
@@ -838,7 +887,7 @@
   }
 
   function tapBox(){
-    if(boxTaps >= 4) return;
+    if(boxTaps >= 4 || palmDown) return;
     boxTaps++;
     ac();
     SFX.knock(boxTaps);
@@ -886,7 +935,7 @@
   }
 
   revealLayer.addEventListener("click", function(){
-    if(revealBusy || !revealItem) return;
+    if(revealBusy || palmDown || !revealItem) return;
     revealBusy = true;
     revealHint.textContent = "";
     SFX.pop();
