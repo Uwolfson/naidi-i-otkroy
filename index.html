@@ -140,6 +140,22 @@
   }
   @keyframes enter{from{opacity:0;transform:translateY(40px) scale(.7)}to{opacity:1;transform:none}}
 
+  /* ─── Экран свободного выбора ───────────────────────── */
+  #chooser{
+    position:absolute;inset:0;z-index:12;
+    display:flex;flex-wrap:wrap;align-content:center;justify-content:center;
+    gap:clamp(2px,1.4vw,20px);
+    padding:clamp(56px,9vh,84px) 16px 16px;
+  }
+  #chooser[hidden]{display:none!important;}
+  #chooser .item{
+    width:clamp(72px,15vmin,148px);height:clamp(72px,15vmin,148px);
+    padding:clamp(5px,1.5vmin,15px);
+  }
+  #chooser .item .art{font-size:clamp(50px,11vmin,110px);}
+  .taken{animation:taken .44s ease-in forwards!important;pointer-events:none;}
+  @keyframes taken{to{opacity:0;transform:scale(.28) translateY(-16vh)}}
+
   .hint .art{animation:hint 1s ease-in-out infinite;}
   @keyframes hint{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-16px) scale(1.09)}}
   .hint{box-shadow:0 0 0 0 rgba(232,149,47,.5);animation:halo 1.4s ease-out infinite;}
@@ -327,6 +343,8 @@
 
   <div id="stage" aria-live="polite"></div>
 
+  <section id="chooser" hidden aria-label="Выбери, что нравится"></section>
+
   <div id="boxLayer" hidden>
     <div id="box" role="button" tabindex="0" aria-label="Открой коробку"><span id="boxGlow"></span>🎁</div>
     <div id="pips"><i></i><i></i><i></i><i></i></div>
@@ -358,7 +376,7 @@
     <div class="group">
       <p class="lbl">Режим по возрасту</p>
       <div class="segs" id="modeSegs">
-        <button class="seg" data-mode="touch"><strong>Потрогай</strong><span>≈1–1,5 года. Нет правильных ответов: любой предмет оживает и называется.</span></button>
+        <button class="seg" data-mode="touch"><strong>Потрогай</strong><span>≈1–1,5 года. Только свободный выбор: любое нажатие верное, предмет оживает, называется и улетает. Угадывания нет.</span></button>
         <button class="seg" data-mode="find"><strong>Найди</strong><span>≈1,5–2,5 года. Два непохожих предмета, голос просит найти один.</span></button>
         <button class="seg" data-mode="guess"><strong>Угадайка</strong><span>≈2,5–3+. Четыре предмета, часто из одной категории.</span></button>
       </div>
@@ -390,7 +408,7 @@
       <span class="tag">Прототип · петля геймплея</span>
       <div id="startRow">🚁 🐄 ⚽ 🎁</div>
       <h1>Найди и открой</h1>
-      <p>Голос просит найти предмет. Верный ответ оживает: вертолёт взлетает, собака убегает и возвращается, мяч катится. Четыре верных ответа — и падает коробка. Четыре стука по ней — и новый предмет навсегда переезжает на полку и в игру.</p>
+      <p>Сначала ребёнок свободно выбирает, что ему нравится: предметы оживают, называются и улетают. Порядок выбора запоминается — и дальше игра спрашивает про них парами, начиная с выбранных последними. Когда пройдены все пары, падает коробка: четыре стука, и новый предмет переезжает на полку и в игру.</p>
       <p>Планшет лучше положить горизонтально. Со звуком.</p>
       <button class="bigBtn" id="startBtn">Играть</button>
     </div>
@@ -454,8 +472,7 @@
     collected: STARTER.slice(),
     mode: "find",
     style: "real",
-    voice: true,
-    streak: 0
+    voice: true
   };
   var KEY = "naidi-i-otkroy-v1";
 
@@ -482,6 +499,7 @@
   var stage = $("stage"), boxLayer = $("boxLayer"), box = $("box"),
       boxTip = $("boxTip"), pips = $("pips"), revealLayer = $("revealLayer"),
       revealArt = $("revealArt"), revealName = $("revealName"), revealHint = $("revealHint"),
+      chooser = $("chooser"),
       shelf = $("shelf"), shelfGrid = $("shelfGrid"), shelfNum = $("shelfNum"),
       shelfCount = $("shelfCount"), settings = $("settings"), startScr = $("start");
 
@@ -604,36 +622,110 @@
   var target = null, lastTargetId = null, busy = false,
       hintTimer = null, hintAt = 0, askTimer = null, lastWrongSfx = 0;
 
-  function slotCount(){
-    if(S.mode === "touch") return 2;
-    if(S.mode === "find")  return 2;
-    return Math.min(4, S.collected.length);
+  /* ── Экран свободного выбора ─────────────────────────
+     Ребёнок этого возраста всё равно тянется к тому, что нравится, а не
+     к тому, что просят. Бороться с этим бессмысленно, поэтому сначала мы
+     отдаём ему экран, где ЛЮБОЕ нажатие верное: предмет оживает, называется
+     и улетает. Запоминается порядок нажатий — из него и собирается пул
+     угадывания. Ребёнок сам набирает себе игру, а любимое остаётся в ней. */
+  var picks = [], pairQueue = [];
+
+  function chooserRow(){
+    var all = S.collected.map(function(id){ return BY_ID[id]; });
+    all.sort(function(){ return Math.random() - 0.5; });
+    var row = all.slice(0, Math.min(8, all.length));
+    // только что открытый предмет обязан оказаться на экране: ребёнок должен
+    // встретить свою награду сразу, а не через несколько сессий
+    var fresh = S.collected[S.collected.length - 1];
+    if(row.every(function(i){ return i.id !== fresh; })) row[row.length - 1] = BY_ID[fresh];
+    return row;
   }
+
+  function startChooser(){
+    picks = []; pairQueue = [];
+    clearTimers();
+    busy = false;
+    stage.textContent = "";
+    chooser.textContent = "";
+    chooserRow().forEach(function(item, i){
+      var b = document.createElement("button");
+      b.className = "item";
+      b.style.animationDelay = (i * 0.06) + "s";
+      b.setAttribute("aria-label", item.name);
+      b.dataset.id = item.id;
+      var art = document.createElement("span");
+      art.className = "art";
+      art.textContent = item.art;
+      b.appendChild(art);
+      b.addEventListener("click", onChoose);
+      chooser.appendChild(b);
+    });
+    chooser.hidden = false;
+    askTimer = setTimeout(function(){ say("Выбирай, что нравится!", 1); }, 520);
+  }
+
+  function onChoose(e){
+    var el = e.currentTarget;
+    if(el.dataset.taken) return;
+    el.dataset.taken = "1";
+    var item = BY_ID[el.dataset.id];
+    ac(); SFX.pop();
+    picks.push(item.id);
+    say(item.name, 2);
+    // остальные предметы остаются нажимаемыми: здесь никто не ждёт своей очереди
+    playReaction(el, item, function(){
+      el.classList.add("taken");
+      setTimeout(function(){
+        if(el.parentNode) el.parentNode.removeChild(el);
+        if(!chooser.children.length) finishChooser();
+      }, 430);
+    });
+  }
+
+  function finishChooser(){
+    chooser.hidden = true;
+    clearTimers();
+    // младшим угадывание не даём совсем: для них свободный выбор и есть игра
+    if(S.mode === "touch" || picks.length < 2) return endOfPass();
+    buildPairQueue();
+    buildRound();
+  }
+
+  /* Пары соседних выборов, с конца к началу: при восьми выборах сначала
+     7-8, потом 5-6, потом 3-4, потом 1-2. Выбранное последним идёт первым —
+     название прозвучало секунды назад, и первый раунд получается самым
+     лёгким. Любимое, выбранное первым, остаётся напоследок как награда. */
+  function buildPairQueue(){
+    pairQueue = [];
+    var p = picks.slice();
+    for(var i = p.length - 2; i >= 0; i -= 2) pairQueue.push([p[i], p[i + 1]]);
+    if(p.length % 2 === 1){
+      // нечётный остаток — самый первый выбор; цепляем его к последней паре
+      if(pairQueue.length) pairQueue[pairQueue.length - 1].push(p[0]);
+      else pairQueue.push([p[0]]);
+    }
+  }
+
+  // Круг пройден. Коробка — если ещё есть что открывать, иначе новый выбор.
+  function endOfPass(){ return nextLocked() ? dropBox() : startChooser(); }
 
   function buildRound(){
     clearTimers();
     busy = false;
-    var pool = S.collected.map(function(id){ return BY_ID[id]; });
-    var n = Math.min(slotCount(), pool.length);
+    chooser.hidden = true;
+    if(S.mode === "touch" || !pairQueue.length) return startChooser();
 
-    var candidates = pool.filter(function(i){ return i.id !== lastTargetId; });
-    if(!candidates.length) candidates = pool;
-    target = pick(candidates);
+    var pair = pairQueue.shift().map(function(id){ return BY_ID[id]; });
+    target = pick(pair);
     lastTargetId = target.id;
 
-    var others = pool.filter(function(i){ return i.id !== target.id; });
-    // "Угадайка" prefers same-category distractors — that is where the real learning is
-    if(S.mode === "guess"){
-      var same = others.filter(function(i){ return i.cat === target.cat; });
-      others = same.concat(others.filter(function(i){ return i.cat !== target.cat; }));
-    } else {
-      var diff = others.filter(function(i){ return i.cat !== target.cat; });
-      others = diff.concat(others.filter(function(i){ return i.cat === target.cat; }));
-      others = others.slice(0, 8).sort(function(){ return Math.random() - 0.5; });
+    var row = pair.slice();
+    // «Угадайка» — четыре предмета: к своей паре добавляется следующая по
+    // очереди, но целью всегда остаётся предмет из текущей пары
+    if(S.mode === "guess" && pairQueue.length){
+      row = row.concat(pairQueue[0].map(function(id){ return BY_ID[id]; }));
     }
-
-    var row = [target].concat(others.slice(0, n - 1));
-    row.sort(function(){ return Math.random() - 0.5; });
+    row = row.slice(0, 4).sort(function(){ return Math.random() - 0.5; });
 
     stage.textContent = "";
     row.forEach(function(item, i){
@@ -650,12 +742,8 @@
       stage.appendChild(b);
     });
 
-    if(S.mode === "touch"){
-      askTimer = setTimeout(function(){ say("Потрогай!", 1); }, 500);
-    } else {
-      askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1); }, 620);
-      armHint(7000);
-    }
+    askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1); }, 620);
+    armHint(7000);
   }
 
   // Подсказку можно только придвинуть, но не отодвинуть: иначе ребёнок,
@@ -697,18 +785,6 @@
     var item = BY_ID[el.dataset.id];
     ac();
 
-    if(S.mode === "touch"){
-      busy = true; clearTimers();
-      SFX.pop();
-      say(item.name, 2);
-      playReaction(el, item, function(){
-        S.streak++;
-        if(S.streak >= 4 && S.collected.length < ITEMS.length){ S.streak = 0; save(); return dropBox(); }
-        save(); buildRound();
-      });
-      return;
-    }
-
     if(item.id !== target.id){
       // Никогда не провал: называем нажатое, повторяем просьбу, придвигаем подсказку.
       // Качание предмета отвечает на КАЖДЫЙ тап — это честная обратная связь.
@@ -728,9 +804,10 @@
     confetti(el);
     say(pick(PRAISE) + " " + target.name + "!", 2);
     playReaction(el, item, function(){
-      S.streak++;
-      if(S.streak >= 4 && S.collected.length < ITEMS.length){ S.streak = 0; save(); return dropBox(); }
       save();
+      // Коробка приходит не по счётчику, а когда пройдены все выбранные пары —
+      // то есть ровно в конце круга по тому, что ребёнок набрал себе сам.
+      if(!pairQueue.length) return endOfPass();
       Array.prototype.forEach.call(stage.children, function(c){ c.classList.add("leaving"); });
       setTimeout(buildRound, 330);
     });
@@ -936,7 +1013,7 @@
     b.addEventListener("click", function(){ S.voice = b.dataset.voice === "on"; save(); syncSegs(); });
   });
   $("resetBtn").addEventListener("click", function(){
-    S.collected = STARTER.slice(); S.streak = 0; save(); syncShelfNum(); syncSegs();
+    S.collected = STARTER.slice(); save(); startChooser(); syncShelfNum(); syncSegs();
   });
 
   /* ── Boot ──────────────────────────────────────────── */
