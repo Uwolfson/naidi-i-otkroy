@@ -529,24 +529,80 @@
     var fem = ru.filter(function(v){ return /(milena|alena|katya|irina|female|женск)/i.test(v.name); });
     return fem[0] || ru[0];
   }
-  function say(text, done){
-    if(!S.voice || !window.speechSynthesis){ if(done) setTimeout(done, 400); return; }
+  /* Речевая очередь.
+     Главное правило: начатая фраза НИКОГДА не обрывается. Ребёнок в этом
+     возрасте долбит по экрану очередями, и каждый тап, рубящий речь на
+     середине, превращает голос в кашу — а именно голос несёт всю задачу.
+     Поэтому: играем текущую до конца, а из всего, что накопилось за это
+     время, держим ровно один следующий элемент — самый свежий и самый
+     приоритетный. Очередь не растёт, отставания от действий не возникает.
+
+     Приоритеты: 0 — называние неверно нажатого предмета (легко выбрасывается),
+                 1 — вопрос раунда,
+                 2 — реакция на действие ребёнка: одобрение, коробка, награда. */
+  var voiceBusy = false, voiceNow = null, voicePending = null;
+
+  function speakNow(text, prio){
     try{
-      window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(text);
       u.lang = "ru-RU"; u.rate = 0.85; u.pitch = 1.2; u.volume = 1;
       var v = ruVoice(); if(v) u.voice = v;
-      var fired = false;
-      u.onend = function(){ if(!fired && done){ fired = true; done(); } };
-      // Safari sometimes never fires onend — belt and braces
-      setTimeout(function(){ if(!fired && done){ fired = true; done(); } }, 200 + text.length * 110);
+
+      voiceBusy = true; voiceNow = {text:text, prio:prio};
+      var closed = false;
+      function finish(){
+        if(closed) return; closed = true;
+        voiceBusy = false; voiceNow = null;
+        var next = voicePending; voicePending = null;
+        if(next) speakNow(next.text, next.prio);
+      }
+      u.onend = finish;
+      u.onerror = finish;
+      // Safari и часть Android молчат про onend — подстраховка по длине фразы
+      setTimeout(finish, 700 + text.length * 120);
       window.speechSynthesis.speak(u);
-    }catch(e){ if(done) setTimeout(done, 400); }
+    }catch(e){
+      voiceBusy = false; voiceNow = null;
+      var p = voicePending; voicePending = null;
+      if(p) setTimeout(function(){ speakNow(p.text, p.prio); }, 50);
+    }
+  }
+
+  function say(text, prio){
+    prio = prio || 0;
+    if(!S.voice || !window.speechSynthesis) return;
+    text = String(text).trim();
+    if(!text) return;
+
+    if(voiceBusy){
+      if(voiceNow && voiceNow.text === text) return;        // ровно это и говорим
+      if(voicePending && voicePending.text === text) return; // уже стоит следующим
+      // равный приоритет — побеждает более свежая реплика; низкий высокую не вытесняет
+      if(!voicePending || prio >= voicePending.prio) voicePending = {text:text, prio:prio};
+      return;
+    }
+    speakNow(text, prio);
+  }
+
+  // Жёсткая остановка — только когда экран меняется и фраза теряет смысл
+  function stopSpeech(){
+    voiceBusy = false; voiceNow = null; voicePending = null;
+    try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
+  }
+
+  // iOS разрешает речь только после произнесённой фразы внутри жеста пользователя
+  function unlockSpeech(){
+    try{
+      var u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0; u.lang = "ru-RU";
+      window.speechSynthesis.speak(u);
+    }catch(e){}
   }
   function pick(a){ return a[Math.floor(Math.random() * a.length)]; }
 
   /* ── Round ─────────────────────────────────────────── */
-  var target = null, lastTargetId = null, busy = false, hintTimer = null, askTimer = null;
+  var target = null, lastTargetId = null, busy = false,
+      hintTimer = null, hintAt = 0, askTimer = null, lastWrongSfx = 0;
 
   function slotCount(){
     if(S.mode === "touch") return 2;
@@ -595,22 +651,32 @@
     });
 
     if(S.mode === "touch"){
-      askTimer = setTimeout(function(){ say("Потрогай!"); }, 500);
+      askTimer = setTimeout(function(){ say("Потрогай!", 1); }, 500);
     } else {
-      askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?"); }, 620);
+      askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1); }, 620);
       armHint(7000);
     }
   }
 
+  // Подсказку можно только придвинуть, но не отодвинуть: иначе ребёнок,
+  // который лупит по экрану очередями, бесконечно сбрасывает себе таймер
+  // и никогда не получает помощи — ровно в тот момент, когда она нужна.
   function armHint(ms){
-    clearTimeout(hintTimer);
     if(S.mode === "touch") return;
+    var at = Date.now() + ms;
+    if(hintTimer && hintAt && at >= hintAt) return;
+    clearTimeout(hintTimer);
+    hintAt = at;
     hintTimer = setTimeout(function(){
+      hintTimer = null; hintAt = 0;
       var el = stage.querySelector('[data-id="' + target.id + '"]');
       if(el) el.classList.add("hint");
     }, ms);
   }
-  function clearTimers(){ clearTimeout(hintTimer); clearTimeout(askTimer); }
+  function clearTimers(){
+    clearTimeout(hintTimer); clearTimeout(askTimer);
+    hintTimer = null; hintAt = 0;
+  }
 
   function playReaction(el, item, after){
     var art = el.querySelector(".art");
@@ -634,7 +700,7 @@
     if(S.mode === "touch"){
       busy = true; clearTimers();
       SFX.pop();
-      say(item.name);
+      say(item.name, 2);
       playReaction(el, item, function(){
         S.streak++;
         if(S.streak >= 4 && S.collected.length < ITEMS.length){ S.streak = 0; save(); return dropBox(); }
@@ -644,10 +710,14 @@
     }
 
     if(item.id !== target.id){
-      // Never a failure state: name what was tapped, re-ask, bring the hint closer
+      // Никогда не провал: называем нажатое, повторяем просьбу, придвигаем подсказку.
+      // Качание предмета отвечает на КАЖДЫЙ тап — это честная обратная связь.
+      // А вот звук и голос при очередях тычков не наслаиваются: звук с паузой,
+      // голос уходит в очередь и не рубит начатую фразу.
       el.classList.remove("nope"); void el.offsetWidth; el.classList.add("nope");
-      SFX.wrong();
-      say("Это " + item.name.toLowerCase() + ". А где " + target.name.toLowerCase() + "?");
+      var now = Date.now();
+      if(now - lastWrongSfx > 450){ SFX.wrong(); lastWrongSfx = now; }
+      say("Это " + item.name.toLowerCase() + ". А где " + target.name.toLowerCase() + "?", 0);
       armHint(3500);
       return;
     }
@@ -656,7 +726,7 @@
     stage.querySelectorAll(".item").forEach(function(o){ o.classList.remove("hint"); });
     SFX.right();
     confetti(el);
-    say(pick(PRAISE) + " " + target.name + "!");
+    say(pick(PRAISE) + " " + target.name + "!", 2);
     playReaction(el, item, function(){
       S.streak++;
       if(S.streak >= 4 && S.collected.length < ITEMS.length){ S.streak = 0; save(); return dropBox(); }
@@ -681,7 +751,7 @@
     boxTip.classList.remove("on");
     boxLayer.hidden = false;
     tone(660, 0, 0.5, "sine", 0.1); tone(440, 0.12, 0.6, "sine", 0.1);
-    say("Ой! Что это?");
+    say("Ой! Что это?", 2);
     setTimeout(function(){ if(!boxTaps) box.classList.add("idle"); }, 800);
     boxTipTimer = setTimeout(function(){ boxTip.classList.add("on"); }, 3200);
   }
@@ -735,7 +805,7 @@
     revealName.textContent = item.name;
     revealHint.textContent = "Нажми — покажу, что он умеет";
     revealLayer.hidden = false;
-    say(item.name + "!");
+    say(item.name + "!", 2);
   }
 
   revealLayer.addEventListener("click", function(){
@@ -743,7 +813,7 @@
     revealBusy = true;
     revealHint.textContent = "";
     SFX.pop();
-    say(revealItem.name);
+    say(revealItem.name, 2);
     var wrap = document.getElementById("revealInner");
     revealArt.classList.add("art");
     wrap.classList.add("r-" + revealItem.react);
@@ -809,7 +879,7 @@
       if(owned){
         cell.setAttribute("aria-label", item.name);
         cell.addEventListener("click", function(){
-          ac(); SFX.pop(); say(item.name);
+          ac(); SFX.pop(); say(item.name, 2);
           cell.classList.remove("r-" + item.react); void cell.offsetWidth;
           cell.classList.add("r-" + item.react);
           art.addEventListener("animationend", function(){ cell.classList.remove("r-" + item.react); }, {once:true});
@@ -822,7 +892,7 @@
   /* ── Sheets ────────────────────────────────────────── */
   function openSheet(el){
     clearTimers();
-    try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
+    stopSpeech();
     el.hidden = false;
   }
   document.querySelectorAll("[data-close]").forEach(function(b){
@@ -883,8 +953,7 @@
 
   $("startBtn").addEventListener("click", function(){
     ac();
-    // iOS needs a spoken utterance inside the gesture before later ones are allowed
-    say(" ");
+    unlockSpeech();
     startScr.hidden = true;
     buildRound();
   });
