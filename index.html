@@ -314,6 +314,24 @@
   .seg strong{display:block;font-family:"Baloo 2",sans-serif;font-size:19px;}
   .seg span{display:block;font-size:13.5px;color:var(--ink-soft);line-height:1.4;margin-top:3px;}
   .note{max-width:720px;margin:0 auto;font-size:14px;line-height:1.6;color:var(--ink-soft);border-top:1px solid var(--paper-edge);padding-top:16px;}
+  .fb{display:grid;gap:10px;}
+  .fb textarea,.fb select{
+    font:inherit;font-size:16px; /* 16px — иначе iOS зумит страницу при фокусе */
+    color:var(--ink);background:#fff;border:0;border-radius:var(--r-md);
+    padding:12px 14px;box-shadow:inset 0 0 0 2px var(--paper-edge);
+  }
+  .fb textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:96px;line-height:1.5;}
+  .fb textarea:focus,.fb select:focus{outline:none;box-shadow:inset 0 0 0 3px var(--amber);}
+  .fbRow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .fb select{flex:1 1 180px;}
+  .sendBtn{background:var(--amber);color:#fff;border-radius:999px;padding:12px 26px;font-weight:700;font-size:16px;box-shadow:0 3px 0 var(--amber-deep);}
+  .sendBtn:disabled{opacity:.55;}
+  .fbNote{font-size:13.5px;color:var(--ink-soft);margin:0;line-height:1.5;}
+  .fbNote.ok{color:var(--sage);font-weight:700;}
+  .fbNote.err{color:#9A4B4B;font-weight:700;}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+  /* полям ввода возвращаем выделение и системное меню вставки */
+  textarea,input,select{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;touch-action:auto;}
   .dangerBtn{background:#fff;box-shadow:inset 0 0 0 2px #D8C3C3;color:#9A4B4B;border-radius:var(--r-md);padding:13px 20px;font-weight:700;}
 
   /* ─── Start ─────────────────────────────────────────── */
@@ -386,6 +404,26 @@
     </div>
 
     <div class="group">
+      <p class="lbl">Отзыв разработчикам</p>
+      <div class="fb">
+        <textarea id="fbText" rows="4" maxlength="2000" placeholder="Что заметили? Понял ли ребёнок, что от него хотят, к чему возвращался, где заскучал…"></textarea>
+        <div class="fbRow">
+          <select id="fbAge" aria-label="Возраст ребёнка">
+            <option value="">Возраст ребёнка</option>
+            <option>до 1,5 лет</option>
+            <option>1,5–2 года</option>
+            <option>2–2,5 года</option>
+            <option>2,5–3 года</option>
+            <option>старше 3 лет</option>
+          </select>
+          <input id="fbWebsite" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <button class="sendBtn" id="fbSend">Отправить</button>
+        </div>
+        <p class="fbNote" id="fbStatus">Имя ребёнка писать не нужно. Вместе с текстом уйдут только режим игры, размер коллекции и тип устройства.</p>
+      </div>
+    </div>
+
+    <div class="group">
       <p class="lbl">Режим по возрасту</p>
       <div class="segs" id="modeSegs">
         <button class="seg" data-mode="touch"><strong>Потрогай</strong><span>≈1–1,5 года. Только свободный выбор: любое нажатие верное, предмет оживает, называется и улетает. Угадывания нет.</span></button>
@@ -447,8 +485,10 @@
   ["gesturestart","gesturechange","gestureend"].forEach(function(name){
     document.addEventListener(name, function(e){ e.preventDefault(); }, {passive:false});
   });
-  document.addEventListener("dblclick", function(e){ e.preventDefault(); }, {passive:false});
-  document.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  // полям ввода оставляем двойной тап (выделить слово) и меню «Вставить»
+  function isField(n){ return !!(n && /^(TEXTAREA|INPUT|SELECT)$/.test(n.tagName)); }
+  document.addEventListener("dblclick", function(e){ if(!isField(e.target)) e.preventDefault(); }, {passive:false});
+  document.addEventListener("contextmenu", function(e){ if(!isField(e.target)) e.preventDefault(); });
   document.addEventListener("dragstart", function(e){ e.preventDefault(); });
 
   /* Ладонь на планшете. Три и больше одновременных касания — это уже не
@@ -1063,6 +1103,76 @@
   });
   $("resetBtn").addEventListener("click", function(){
     S.collected = STARTER.slice(); save(); startChooser(); syncShelfNum(); syncSegs();
+  });
+
+  /* ── Отзыв ─────────────────────────────────────────
+     Адрес воркера из feedback-worker/. Пока он пустой, отзыв уходит через
+     окно «Поделиться» Telegram, и родитель сам выбирает группу: работает
+     уже сейчас, но только у тех, кто в группе состоит. С воркером отзыв
+     прилетает в группу от бота — от кого угодно и без Telegram вообще. */
+  var FEEDBACK_ENDPOINT = "";
+  var VERSION = "proto-7";
+
+  function deviceLine(){
+    var ua = navigator.userAgent;
+    // iPadOS с 13-й версии представляется маком — отличаем по тачскрину
+    var kind = (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) ? "iPad"
+      : /iPhone/.test(ua) ? "iPhone"
+      : /Android/.test(ua) ? (/Mobile/.test(ua) ? "Android-телефон" : "Android-планшет")
+      : "компьютер";
+    return kind + ", экран " + screen.width + "×" + screen.height;
+  }
+
+  function fbStatus(text, kind){
+    var el = $("fbStatus");
+    el.className = "fbNote" + (kind ? " " + kind : "");
+    el.textContent = text;
+  }
+
+  function shareViaTelegram(p){
+    var body = "Отзыв о «Найди и открой»\n\n" + p.text + "\n\n" +
+      (p.age ? "Возраст ребёнка: " + p.age + "\n" : "") +
+      "Режим: " + p.mode + ", в коллекции: " + p.collected + "\n" + p.device;
+    var page = location.href.split("#")[0].split("?")[0];
+    window.open("https://t.me/share/url?url=" + encodeURIComponent(page) +
+                "&text=" + encodeURIComponent(body), "_blank", "noopener");
+    fbStatus("Открылся Telegram — выберите группу отзывов и отправьте.");
+  }
+
+  $("fbSend").addEventListener("click", function(){
+    var text = $("fbText").value.trim();
+    if(!text){
+      fbStatus("Напишите хотя бы пару слов — пустой отзыв не отправить.", "err");
+      $("fbText").focus();
+      return;
+    }
+    var payload = {
+      text: text,
+      age: $("fbAge").value,
+      mode: S.mode,
+      style: S.style,
+      collected: S.collected.length,
+      device: deviceLine(),
+      version: VERSION,
+      website: $("fbWebsite").value
+    };
+    if(!FEEDBACK_ENDPOINT) return shareViaTelegram(payload);
+
+    var btn = $("fbSend");
+    btn.disabled = true; btn.textContent = "Отправляю…";
+    fetch(FEEDBACK_ENDPOINT, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    }).then(function(r){
+      if(!r.ok) throw new Error(String(r.status));
+      $("fbText").value = ""; $("fbAge").value = "";
+      fbStatus("Отправлено — отзыв уже в группе. Спасибо.", "ok");
+    }).catch(function(){
+      fbStatus("Не отправилось — похоже, нет связи. Текст остался в поле, попробуйте ещё раз.", "err");
+    }).then(function(){
+      btn.disabled = false; btn.textContent = "Отправить";
+    });
   });
 
   /* ── Boot ──────────────────────────────────────────── */
