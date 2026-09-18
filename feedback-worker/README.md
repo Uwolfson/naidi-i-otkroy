@@ -48,3 +48,36 @@
 - **`chat not found`** — неверный `CHAT_ID` или бота нет в группе.
 - **`Unauthorized`** — неверный `BOT_TOKEN`.
 - **`message thread not found`** — неверный `TOPIC_ID` или темы в группе выключены.
+
+## Журнал группы: читать отзывы и ответы
+
+Воркер складывает в хранилище KV всё, что видит в группе: отзывы, которые
+отправил сам (бот не получает обратно свои сообщения), и сообщения людей,
+которые Telegram присылает на вебхук `/telegram`.
+
+Настройка:
+
+1. **Storage & databases → KV → Create** → `naidi-feedback-messages`.
+2. Воркер → **Bindings → Add binding → KV namespace**: имя `MESSAGES`,
+   хранилище `naidi-feedback-messages`.
+3. **Settings → Variables and Secrets**: `READ_KEY`, тип **Secret**, любая
+   длинная строка из `A-Z a-z 0-9 _ -`. Локальная копия лежит в
+   `feedback-worker/.read-key`, файл в `.gitignore`.
+4. Подключить вебхук:
+
+   ```bash
+   curl -H "Authorization: Bearer $(cat feedback-worker/.read-key)" https://naidi-feedback.wolfson-u.workers.dev/setup
+   ```
+
+5. Чтобы бот видел сообщения людей, а не только команды: в @BotFather
+   `/setprivacy` → бот → **Disable**, потом удалить бота из группы и
+   добавить заново. Либо просто сделать бота администратором группы.
+
+Читать:
+
+```bash
+curl -H "Authorization: Bearer $(cat feedback-worker/.read-key)" "https://naidi-feedback.wolfson-u.workers.dev/messages?limit=50"
+```
+
+Новые сверху, хранятся год. После `/setup` бот больше не отдаёт сообщения
+через `getUpdates`: у бота может быть либо вебхук, либо опрос.
