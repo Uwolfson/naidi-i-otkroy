@@ -114,23 +114,29 @@
   #gearFill{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(232,149,47,.35);}
 
   /* ─── Items row ─────────────────────────────────────── */
+  /* Цель нажатия — не меньше 2×2 см (NN/g для маленьких детей: вчетверо
+     больше взрослого 1×1 см). Физический размер экрана вебу недоступен,
+     поэтому 2 см считаем по самой плотной распространённой шкале: около
+     64 CSS-пикселей на сантиметр у Android и iPhone. Отсюда минимум 128 px.
+     На iPad пиксель крупнее (~52 на см), там те же 128 px дают ~2,5 см. */
   #stage{
     position:absolute;inset:0;z-index:10;
-    display:flex;align-items:center;justify-content:center;
+    display:flex;flex-wrap:wrap;align-items:center;align-content:center;justify-content:center;
     gap:clamp(18px,6vw,80px);
-    padding:0 20px;
+    padding:0 16px;
   }
   .item{
     position:relative;
+    box-sizing:border-box;
     display:grid;place-items:center;
-    width:clamp(96px,22vmin,220px);height:clamp(96px,22vmin,220px);
-    /* generous invisible hit area beyond the art */
-    padding:clamp(12px,3vmin,26px);
+    width:clamp(128px,28vmin,260px);height:clamp(128px,28vmin,260px);
+    /* невидимая зона нажатия шире самой картинки */
+    padding:clamp(14px,3vmin,26px);
     border-radius:50%;
     animation:enter .5s cubic-bezier(.2,1.5,.4,1) backwards;
   }
   .item .art{
-    font-size:clamp(70px,17vmin,170px);
+    font-size:clamp(84px,17vmin,170px);
     line-height:1;
     display:block;
     filter:saturate(.92) contrast(1.06) drop-shadow(0 7px 7px rgba(70,52,26,.3));
@@ -161,10 +167,37 @@
   }
   #chooser[hidden]{display:none!important;}
   #chooser .item{
-    width:clamp(72px,15vmin,148px);height:clamp(72px,15vmin,148px);
-    padding:clamp(5px,1.5vmin,15px);
+    width:clamp(128px,17vmin,170px);height:clamp(128px,17vmin,170px);
+    padding:clamp(10px,1.8vmin,16px);
   }
-  #chooser .item .art{font-size:clamp(50px,11vmin,110px);}
+  #chooser .item .art{font-size:clamp(84px,12vmin,124px);}
+  /* ─── Картинка вопроса и рука-подсказка ────────────── */
+  #cue{
+    position:absolute;z-index:20;left:50%;
+    top:calc(10px + env(safe-area-inset-top,0px));
+    width:clamp(84px,14vmin,130px);height:clamp(84px,14vmin,130px);
+    margin-left:calc(clamp(84px,14vmin,130px) / -2);
+    display:grid;place-items:center;border-radius:50%;
+    background:#fff;box-shadow:0 6px 18px var(--shadow);
+    pointer-events:none;
+    animation:cueIn .5s cubic-bezier(.2,1.5,.4,1);
+  }
+  #cue::after{
+    content:"";position:absolute;bottom:-10px;left:50%;margin-left:-11px;
+    border:11px solid transparent;border-top-color:#fff;border-bottom:0;
+  }
+  #cue .art{font-size:clamp(54px,9.5vmin,90px);line-height:1;}
+  @keyframes cueIn{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+
+  #hand{
+    position:absolute;z-index:22;pointer-events:none;
+    font-size:clamp(56px,9vmin,84px);line-height:1;
+    filter:drop-shadow(0 6px 6px rgba(50,36,14,.35));
+    transition:left .9s cubic-bezier(.4,0,.2,1),top .9s cubic-bezier(.4,0,.2,1);
+  }
+  #hand.press{animation:press .8s ease-in-out 2;}
+  @keyframes press{0%,100%{transform:scale(1)}40%{transform:scale(.82) translateY(10px)}}
+
   .taken{animation:taken .44s ease-in forwards!important;pointer-events:none;}
   @keyframes taken{to{opacity:0;transform:scale(.28) translateY(-16vh)}}
 
@@ -375,6 +408,9 @@
 
   <section id="chooser" hidden aria-label="Выбери, что нравится"></section>
 
+  <div id="cue" hidden aria-hidden="true"><span class="art" id="cueArt"></span></div>
+  <div id="hand" hidden aria-hidden="true">👆</div>
+
   <div id="boxLayer" hidden>
     <div id="box" role="button" tabindex="0" aria-label="Открой коробку"><span id="boxGlow"></span>🎁</div>
     <div id="pips"><i></i><i></i><i></i><i></i></div>
@@ -448,6 +484,14 @@
       </div>
     </div>
 
+    <div class="group">
+      <p class="lbl">Картинка вопроса</p>
+      <div class="segs" id="cueSegs">
+        <button class="seg" data-cue="auto"><strong>Когда нет голоса</strong><span>Искомый предмет появляется в облачке, только если голос выключен или на устройстве нет русского голоса.</span></button>
+        <button class="seg" data-cue="always"><strong>Всегда</strong><span>Облачко в каждом раунде. Проще, но задача становится «найди такую же», а не «найди по слову».</span></button>
+      </div>
+    </div>
+
     <div class="group"><button class="dangerBtn" id="resetBtn">Начать коллекцию заново</button></div>
 
     <p class="note"><strong>Это прототип петли, а не готовая игра.</strong> Предметы — временные эмодзи вместо настоящих 2D-ассетов, голос — синтез речи браузера вместо живой актрисы. Проверяем здесь одно: понимает ли ребёнок, что от него хотят, и возвращается ли он к коробке. Родительский вход открывается удержанием шестерёнки — пример защиты от случайного нажатия.</p>
@@ -491,21 +535,45 @@
   document.addEventListener("contextmenu", function(e){ if(!isField(e.target)) e.preventDefault(); });
   document.addEventListener("dragstart", function(e){ e.preventDefault(); });
 
-  /* Ладонь на планшете. Три и больше одновременных касания — это уже не
-     палец, а положенная рука: такие нажатия не засчитываем. Порог по
-     площади касания сознательно высокий — лучше пропустить ладонь, чем
-     не засчитать честный тап толстым детским пальцем. Значение просится
-     на подстройку по живым устройствам, на глаз его не выставить. */
-  var palmDown = false;
-  document.addEventListener("touchstart", function(e){
-    var t = e.changedTouches && e.changedTouches[0];
-    var r = t ? Math.max(t.radiusX || 0, t.radiusY || 0) : 0;
-    palmDown = e.touches.length > 2 || r > 70;
-  }, {passive:true});
-  document.addEventListener("touchend", function(e){
-    // сброс с задержкой: click приходит уже после touchend
-    if(!e.touches.length) setTimeout(function(){ palmDown = false; }, 60);
-  }, {passive:true});
+  /* ── Нажатие для детской руки ───────────────────────
+     Обычный click браузер отменяет, если палец хоть немного проехал по
+     экрану, — а у ребёнка 1–3 лет «смазан» почти каждый тап. NN/g прямо
+     советует принимать нажатие в любом исполнении, поэтому засчитываем
+     касание по его НАЧАЛУ на предмете: куда палец потом поехал, неважно.
+
+     Решение принимается через 80 мс после касания, а не сразу: ладонь
+     ложится на экран веером касаний как раз за эти десятки миллисекунд,
+     и первое из них иначе проскочило бы. Три и больше одновременных
+     касания или очень широкое пятно контакта — это положенная рука, а не
+     палец. Порог по ширине сознательно высокий: лучше пропустить ладонь,
+     чем не засчитать тап толстым детским пальцем. Значение просится на
+     подстройку по живым устройствам, на глаз его не выставить. */
+  var TAP_DECIDE_MS = 80, PALM_WIDTH_PX = 140;
+  var pointersDown = {}, palmDown = false;
+
+  function pointerCount(){ return Object.keys(pointersDown).length; }
+  document.addEventListener("pointerdown", function(e){
+    if(e.pointerType !== "touch") return;
+    pointersDown[e.pointerId] = true;
+    if(pointerCount() > 2 || Math.max(e.width || 0, e.height || 0) > PALM_WIDTH_PX) palmDown = true;
+  }, true);
+  function pointerGone(e){
+    if(e.pointerType !== "touch") return;
+    delete pointersDown[e.pointerId];
+    // сброс с задержкой, иначе решение по ещё не принятому касанию увидит «чисто»
+    if(!pointerCount()) setTimeout(function(){ if(!pointerCount()) palmDown = false; }, TAP_DECIDE_MS + 40);
+  }
+  document.addEventListener("pointerup", pointerGone, true);
+  document.addEventListener("pointercancel", pointerGone, true);
+
+  function onTap(el, handler){
+    el.addEventListener("pointerdown", function(e){
+      if(e.pointerType === "mouse" && e.button !== 0) return;
+      setTimeout(function(){ if(!palmDown) handler(el); }, TAP_DECIDE_MS);
+    });
+    // клавиатура и экранные чтецы присылают click без касания (detail === 0)
+    el.addEventListener("click", function(e){ if(e.detail === 0) handler(el); });
+  }
 
   /* ── Content catalogue ────────────────────────────────
      In production this is a data file, one record per object:
@@ -560,7 +628,8 @@
     collected: STARTER.slice(),
     mode: "find",
     style: "real",
-    voice: true
+    voice: true,
+    cue: "auto"   // картинка вопроса: "auto" — только когда голоса нет, "always" — всегда
   };
   var KEY = "naidi-i-otkroy-v1";
 
@@ -579,6 +648,7 @@
       if(p.mode) S.mode = p.mode;
       if(p.style) S.style = p.style;
       if(typeof p.voice === "boolean") S.voice = p.voice;
+      if(p.cue === "auto" || p.cue === "always") S.cue = p.cue;
     }catch(e){}
   }
 
@@ -587,7 +657,7 @@
   var stage = $("stage"), boxLayer = $("boxLayer"), box = $("box"),
       boxTip = $("boxTip"), pips = $("pips"), revealLayer = $("revealLayer"),
       revealArt = $("revealArt"), revealName = $("revealName"), revealHint = $("revealHint"),
-      chooser = $("chooser"),
+      chooser = $("chooser"), cue = $("cue"), cueArt = $("cueArt"), hand = $("hand"),
       shelf = $("shelf"), shelfGrid = $("shelfGrid"), shelfNum = $("shelfNum"),
       shelfCount = $("shelfCount"), settings = $("settings"), startScr = $("start");
 
@@ -646,7 +716,7 @@
      Приоритеты: 0 — называние неверно нажатого предмета (легко выбрасывается),
                  1 — вопрос раунда,
                  2 — реакция на действие ребёнка: одобрение, коробка, награда. */
-  var voiceBusy = false, voiceNow = null, voicePending = null;
+  var voiceBusy = false, voiceNow = null, voicePending = null, voiceFailed = false;
 
   function speakNow(text, prio){
     try{
@@ -663,7 +733,14 @@
         if(next) speakNow(next.text, next.prio);
       }
       u.onend = finish;
-      u.onerror = finish;
+      u.onerror = function(ev){
+        // interrupted и canceled — это наша же остановка, не поломка
+        if(ev && ev.error && !/interrupted|canceled/.test(ev.error)){
+          voiceFailed = true;
+          if(target && stage.children.length) showCue(target);
+        }
+        finish();
+      };
       // Safari и часть Android молчат про onend — подстраховка по длине фразы
       setTimeout(finish, 700 + text.length * 120);
       window.speechSynthesis.speak(u);
@@ -708,7 +785,55 @@
 
   /* ── Round ─────────────────────────────────────────── */
   var target = null, lastTargetId = null, busy = false,
-      hintTimer = null, hintAt = 0, askTimer = null, lastWrongSfx = 0;
+      hintTimer = null, hintAt = 0, askTimer = null, lastWrongSfx = 0,
+      roundTaps = 0, sessionRounds = 0, demoTimer = null, handTimer = null,
+      chooserDemoDone = false;
+
+  /* ── Показать задачу, а не только произнести ──────────
+     NN/g видели, как браузер заблокировал звук и дети так и не поняли,
+     чего от них хотят. У нас задачу ставит только голос, так что без звука
+     игра молча ломается: выключенный голос, Android без русского голоса,
+     ошибка синтеза. На этот случай искомый предмет показывается картинкой
+     в облачке. Задача от этого меняется — «найди такую же» вместо «найди
+     по слову», — поэтому по умолчанию облачко только запасной вариант. */
+  function voiceLikelyWorks(){
+    return S.voice && !!window.speechSynthesis && !voiceFailed && !!ruVoice();
+  }
+  function showCue(item){
+    var on = S.cue === "always" || !voiceLikelyWorks();
+    cue.hidden = !on;
+    if(!on) return;
+    cueArt.textContent = item.art;
+    cue.style.animation = "none"; void cue.offsetWidth; cue.style.animation = "";
+  }
+  function hideCue(){ cue.hidden = true; }
+
+  // Рука приходит снизу из-за края и дважды «нажимает» на предмет.
+  function showHand(el){
+    if(!el || !el.isConnected) return;
+    var app = document.getElementById("app").getBoundingClientRect();
+    var r = el.getBoundingClientRect();
+    hand.hidden = false;
+    hand.classList.remove("press");
+    var x = r.left - app.left + r.width / 2 - hand.offsetWidth / 2;
+    var y = r.top - app.top + r.height * 0.5;   // кончик пальца — верх эмодзи
+    hand.style.transition = "none";
+    hand.style.left = x + "px";
+    hand.style.top = (app.height + 12) + "px";
+    void hand.offsetWidth;
+    hand.style.transition = "";
+    hand.style.top = y + "px";
+    clearTimeout(handTimer);
+    handTimer = setTimeout(function(){
+      hand.classList.add("press");
+      handTimer = setTimeout(hideHand, 1750);
+    }, 950);
+  }
+  function hideHand(){
+    clearTimeout(handTimer);
+    hand.hidden = true;
+    hand.classList.remove("press");
+  }
 
   /* ── Экран свободного выбора ─────────────────────────
      Ребёнок этого возраста всё равно тянется к тому, что нравится, а не
@@ -718,10 +843,33 @@
      угадывания. Ребёнок сам набирает себе игру, а любимое остаётся в ней. */
   var picks = [], pairQueue = [];
 
+  /* Сколько предметов помещается на экран выбора, если каждый не меньше
+     2 см. На планшете это всегда восемь; на маленьком телефоне в
+     портретной ориентации может выйти меньше — тогда меньше и показываем,
+     а не сжимаем картинки до размера, в который ребёнок не попадёт.
+     Экран выбора к этому моменту уже видим, иначе размеров у него нет. */
+  var MIN_TARGET_PX = 128;
+  function chooserCapacity(){
+    var cs = getComputedStyle(chooser);
+    var w = chooser.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    var h = chooser.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    var probe = document.createElement("div");
+    probe.className = "item";
+    probe.style.visibility = "hidden";
+    chooser.appendChild(probe);
+    var size = Math.max(MIN_TARGET_PX, probe.offsetWidth);
+    chooser.removeChild(probe);
+    var gap = parseFloat(cs.columnGap) || 0;
+    var cols = Math.max(1, Math.floor((w + gap) / (size + gap)));
+    var rows = Math.max(1, Math.floor((h + gap) / (size + gap)));
+    return cols * rows;
+  }
+
   function chooserRow(){
     var all = S.collected.map(function(id){ return BY_ID[id]; });
     all.sort(function(){ return Math.random() - 0.5; });
-    var row = all.slice(0, Math.min(8, all.length));
+    var n = Math.max(2, Math.min(8, all.length, chooserCapacity()));
+    var row = all.slice(0, n);
     // только что открытый предмет обязан оказаться на экране: ребёнок должен
     // встретить свою награду сразу, а не через несколько сессий
     var fresh = S.collected[S.collected.length - 1];
@@ -735,6 +883,7 @@
     busy = false;
     stage.textContent = "";
     chooser.textContent = "";
+    chooser.hidden = false;
     chooserRow().forEach(function(item, i){
       var b = document.createElement("button");
       b.className = "item";
@@ -745,16 +894,24 @@
       art.className = "art";
       art.textContent = item.art;
       b.appendChild(art);
-      b.addEventListener("click", onChoose);
+      onTap(b, onChoose);
       chooser.appendChild(b);
     });
     chooser.hidden = false;
     askTimer = setTimeout(function(){ say("Выбирай, что нравится!", 1); }, 520);
+    // Один раз за сессию: если ребёнок замер перед экраном выбора, рука
+    // показывает, что картинки можно просто трогать.
+    if(!chooserDemoDone){
+      demoTimer = setTimeout(function(){
+        if(picks.length) return;
+        chooserDemoDone = true;
+        showHand(chooser.querySelector(".item:not([data-taken])"));
+      }, 2600);
+    }
   }
 
-  function onChoose(e){
-    if(palmDown) return;
-    var el = e.currentTarget;
+  function onChoose(el){
+    hideHand();
     if(el.dataset.taken) return;
     el.dataset.taken = "1";
     var item = BY_ID[el.dataset.id];
@@ -827,12 +984,17 @@
       art.className = "art";
       art.textContent = item.art;
       b.appendChild(art);
-      b.addEventListener("click", onPick);
+      onTap(b, onPick);
       stage.appendChild(b);
     });
 
+    roundTaps = 0;
+    showCue(target);
     askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1); }, 620);
-    armHint(7000);
+    // Первый раунд сессии — обучающий: подсказка вдвое раньше, и если ребёнок
+    // не нажимает ничего, рука показывает, куда. Дальше — обычные 7 секунд.
+    armHint(sessionRounds === 0 ? 3500 : 7000);
+    sessionRounds++;
   }
 
   // Подсказку можно только придвинуть, но не отодвинуть: иначе ребёнок,
@@ -847,12 +1009,17 @@
     hintTimer = setTimeout(function(){
       hintTimer = null; hintAt = 0;
       var el = stage.querySelector('[data-id="' + target.id + '"]');
-      if(el) el.classList.add("hint");
+      if(!el) return;
+      el.classList.add("hint");
+      // Ребёнок за весь раунд не нажал ничего — скорее всего, не понял,
+      // что вообще делать. Тогда кроме свечения приходит рука.
+      if(roundTaps === 0) showHand(el);
     }, ms);
   }
   function clearTimers(){
-    clearTimeout(hintTimer); clearTimeout(askTimer);
+    clearTimeout(hintTimer); clearTimeout(askTimer); clearTimeout(demoTimer);
     hintTimer = null; hintAt = 0;
+    hideHand(); hideCue();
   }
 
   function playReaction(el, item, after){
@@ -868,9 +1035,10 @@
     setTimeout(end, 3200);
   }
 
-  function onPick(e){
-    if(busy || palmDown) return;
-    var el = e.currentTarget;
+  function onPick(el){
+    if(busy) return;
+    roundTaps++;
+    hideHand();
     var item = BY_ID[el.dataset.id];
     ac();
 
@@ -927,7 +1095,7 @@
   }
 
   function tapBox(){
-    if(boxTaps >= 4 || palmDown) return;
+    if(boxTaps >= 4) return;
     boxTaps++;
     ac();
     SFX.knock(boxTaps);
@@ -948,7 +1116,7 @@
       setTimeout(openReward, 380);
     }
   }
-  box.addEventListener("click", tapBox);
+  onTap(box, tapBox);
   box.addEventListener("keydown", function(e){ if(e.key === "Enter" || e.key === " "){ e.preventDefault(); tapBox(); } });
 
   /* ── Reveal the new object ─────────────────────────── */
@@ -974,8 +1142,8 @@
     say(item.name + "!", 2);
   }
 
-  revealLayer.addEventListener("click", function(){
-    if(revealBusy || palmDown || !revealItem) return;
+  onTap(revealLayer, function(){
+    if(revealBusy || !revealItem) return;
     revealBusy = true;
     revealHint.textContent = "";
     SFX.pop();
@@ -1044,7 +1212,7 @@
       cell.appendChild(art);
       if(owned){
         cell.setAttribute("aria-label", item.name);
-        cell.addEventListener("click", function(){
+        onTap(cell, function(){
           ac(); SFX.pop(); say(item.name, 2);
           cell.classList.remove("r-" + item.react); void cell.offsetWidth;
           cell.classList.add("r-" + item.react);
@@ -1091,6 +1259,7 @@
     document.querySelectorAll("#modeSegs .seg").forEach(function(b){ b.classList.toggle("on", b.dataset.mode === S.mode); });
     document.querySelectorAll("#styleSegs .seg").forEach(function(b){ b.classList.toggle("on", b.dataset.style === S.style); });
     document.querySelectorAll("#voiceSegs .seg").forEach(function(b){ b.classList.toggle("on", (b.dataset.voice === "on") === S.voice); });
+    document.querySelectorAll("#cueSegs .seg").forEach(function(b){ b.classList.toggle("on", b.dataset.cue === S.cue); });
   }
   document.querySelectorAll("#modeSegs .seg").forEach(function(b){
     b.addEventListener("click", function(){ S.mode = b.dataset.mode; save(); syncSegs(); });
@@ -1101,6 +1270,9 @@
   document.querySelectorAll("#voiceSegs .seg").forEach(function(b){
     b.addEventListener("click", function(){ S.voice = b.dataset.voice === "on"; save(); syncSegs(); });
   });
+  document.querySelectorAll("#cueSegs .seg").forEach(function(b){
+    b.addEventListener("click", function(){ S.cue = b.dataset.cue; save(); syncSegs(); });
+  });
   $("resetBtn").addEventListener("click", function(){
     S.collected = STARTER.slice(); save(); startChooser(); syncShelfNum(); syncSegs();
   });
@@ -1110,8 +1282,11 @@
      окно «Поделиться» Telegram, и родитель сам выбирает группу: работает
      уже сейчас, но только у тех, кто в группе состоит. С воркером отзыв
      прилетает в группу от бота — от кого угодно и без Telegram вообще. */
-  var FEEDBACK_ENDPOINT = "https://naidi-feedback.wolfson-u.workers.dev";
-  var VERSION = "proto-7";
+  // Воркер принимает отзывы только с GitHub Pages, поэтому в других копиях
+  // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
+  var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
+    ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
+  var VERSION = "proto-8";
 
   function deviceLine(){
     var ua = navigator.userAgent;
