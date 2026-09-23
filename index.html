@@ -1143,7 +1143,10 @@
     var c = ac(), buf = sfxBuffers[id];
     if(!c || !buf) return false;
     opts = opts || {};
-    offset = Math.min(offset || 0, Math.max(0, buf.duration - 0.3));
+    // У длинной записи начало — обычно тихий подлёт или пауза перед звуком.
+    // Треть от длительности почти всегда попадает в самую гущу.
+    if(offset == null) offset = buf.duration > 8 ? buf.duration * 0.3 : 0;
+    offset = Math.min(offset, Math.max(0, buf.duration - 0.3));
     dur = Math.min(dur || 2.6, buf.duration - offset);
     if(dur <= 0.05) return false;
     var t = c.currentTime;
@@ -1438,7 +1441,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-12";
+  var VERSION = "proto-13";
 
   function deviceLine(){
     var ua = navigator.userAgent;
