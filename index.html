@@ -159,18 +159,15 @@
   @keyframes enter{from{opacity:0;transform:translateY(40px) scale(.7)}to{opacity:1;transform:none}}
 
   /* ─── Экран свободного выбора ───────────────────────── */
+  /* Сетка: число колонок, размер предметов и зазор считает JS — он берёт
+     самый крупный размер, при котором предметы укладываются в несколько
+     рядов и не мельче 2 см. Размеры приходят инлайном, поэтому здесь их нет. */
   #chooser{
     position:absolute;inset:0;z-index:12;
-    display:flex;flex-wrap:wrap;align-content:center;justify-content:center;
-    gap:clamp(2px,1.4vw,20px);
+    display:grid;align-content:center;justify-content:center;
     padding:clamp(56px,9vh,84px) 16px 16px;
   }
   #chooser[hidden]{display:none!important;}
-  #chooser .item{
-    width:clamp(128px,17vmin,170px);height:clamp(128px,17vmin,170px);
-    padding:clamp(10px,1.8vmin,16px);
-  }
-  #chooser .item .art{font-size:clamp(84px,12vmin,124px);}
   /* ─── Картинка вопроса и рука-подсказка ────────────── */
   #cue{
     position:absolute;z-index:20;left:50%;
@@ -843,32 +840,42 @@
      угадывания. Ребёнок сам набирает себе игру, а любимое остаётся в ней. */
   var picks = [], pairQueue = [];
 
-  /* Сколько предметов помещается на экран выбора, если каждый не меньше
-     2 см. На планшете это всегда восемь; на маленьком телефоне в
-     портретной ориентации может выйти меньше — тогда меньше и показываем,
-     а не сжимаем картинки до размера, в который ребёнок не попадёт.
-     Экран выбора к этому моменту уже видим, иначе размеров у него нет. */
-  var MIN_TARGET_PX = 128;
-  function chooserCapacity(){
+  /* Раскладка экрана выбора. Берём самый КРУПНЫЙ размер предмета, при
+     котором они укладываются в несколько рядов: крупная картинка сама по
+     себе приглашает её потрогать, а два-три ряда читаются как «тут много
+     всего», чего одна строчка не даёт. Нижняя граница — 2 см (NN/g),
+     верхняя — чтобы предмет не занял пол-экрана. Если при нужном числе
+     предметов ничего крупнее минимума не выходит, показываем меньше
+     предметов, а не мельчим их.
+     Экран к этому моменту уже видим, иначе размеров у него нет. */
+  var MIN_TARGET_PX = 128, MAX_TARGET_PX = 300;
+
+  function chooserLayout(){
     var cs = getComputedStyle(chooser);
     var w = chooser.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     var h = chooser.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    var probe = document.createElement("div");
-    probe.className = "item";
-    probe.style.visibility = "hidden";
-    chooser.appendChild(probe);
-    var size = Math.max(MIN_TARGET_PX, probe.offsetWidth);
-    chooser.removeChild(probe);
-    var gap = parseFloat(cs.columnGap) || 0;
-    var cols = Math.max(1, Math.floor((w + gap) / (size + gap)));
-    var rows = Math.max(1, Math.floor((h + gap) / (size + gap)));
-    return cols * rows;
+    var gap = Math.max(12, Math.round(Math.min(w, h) * 0.05));
+
+    for(var n = Math.min(8, S.collected.length); n >= 2; n--){
+      var best = null;
+      for(var cols = 1; cols <= n; cols++){
+        var rows = Math.ceil(n / cols);
+        var size = Math.min((w - gap * (cols - 1)) / cols,
+                            (h - gap * (rows - 1)) / rows,
+                            MAX_TARGET_PX);
+        if(size < MIN_TARGET_PX) continue;
+        // несколько рядов важнее лишних пикселей, поэтому не просто максимум
+        var score = size + (rows >= 2 ? 10000 : 0);
+        if(!best || score > best.score) best = {cols:cols, size:Math.floor(size), score:score};
+      }
+      if(best) return {n:n, cols:best.cols, size:best.size, gap:gap};
+    }
+    return {n:Math.min(2, S.collected.length), cols:2, size:MIN_TARGET_PX, gap:gap};
   }
 
-  function chooserRow(){
+  function chooserRow(n){
     var all = S.collected.map(function(id){ return BY_ID[id]; });
     all.sort(function(){ return Math.random() - 0.5; });
-    var n = Math.max(2, Math.min(8, all.length, chooserCapacity()));
     var row = all.slice(0, n);
     // только что открытый предмет обязан оказаться на экране: ребёнок должен
     // встретить свою награду сразу, а не через несколько сессий
@@ -884,14 +891,22 @@
     stage.textContent = "";
     chooser.textContent = "";
     chooser.hidden = false;
-    chooserRow().forEach(function(item, i){
+
+    var L = chooserLayout();
+    chooser.style.gridTemplateColumns = "repeat(" + L.cols + ", " + L.size + "px)";
+    chooser.style.gap = L.gap + "px";
+
+    chooserRow(L.n).forEach(function(item, i){
       var b = document.createElement("button");
       b.className = "item";
       b.style.animationDelay = (i * 0.06) + "s";
+      b.style.width = b.style.height = L.size + "px";
+      b.style.padding = Math.round(L.size * 0.09) + "px";
       b.setAttribute("aria-label", item.name);
       b.dataset.id = item.id;
       var art = document.createElement("span");
       art.className = "art";
+      art.style.fontSize = Math.round(L.size * 0.64) + "px";
       art.textContent = item.art;
       b.appendChild(art);
       onTap(b, onChoose);
@@ -922,8 +937,10 @@
     playReaction(el, item, function(){
       el.classList.add("taken");
       setTimeout(function(){
-        if(el.parentNode) el.parentNode.removeChild(el);
-        if(!chooser.children.length) finishChooser();
+        // Клетка остаётся пустой: если убрать предмет из сетки, остальные
+        // перескочат на его место, и ребёнок будет тыкать туда, где предмет был.
+        el.style.visibility = "hidden";
+        if(!chooser.querySelector(".item:not([data-taken])")) finishChooser();
       }, 430);
     });
   }
@@ -1286,7 +1303,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-8";
+  var VERSION = "proto-9";
 
   function deviceLine(){
     var ua = navigator.userAgent;
