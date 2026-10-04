@@ -220,6 +220,47 @@
     92%{transform:translate(0,3vh) rotate(0) scale(1.05,.93)}
     100%{transform:translate(0,0) rotate(0) scale(1)}
   }
+  /* Самолёт не умеет, как вертолёт, болтаться и пятиться: он летит туда,
+     куда смотрит, а чтобы вернуться — разворачивается. Отсюда отдельная
+     анимация с разбегом, набором высоты, разворотом за краем и заходом
+     на посадку. Разворот сделан отражением, поэтому нос всегда по курсу,
+     в какую бы сторону ни смотрел значок на конкретном устройстве. */
+  .r-plane .art{animation:r-plane 2.8s cubic-bezier(.4,0,.5,1);}
+  @keyframes r-plane{
+    0%{transform:translate(0,0) rotate(0) scaleX(1)}
+    10%{transform:translate(2vw,1vh) rotate(4deg) scaleX(1)}
+    22%{transform:translate(-6vw,-7vh) rotate(-11deg) scaleX(1)}
+    48%{transform:translate(-42vw,-19vh) rotate(-6deg) scaleX(1)}
+    53%{transform:translate(-42vw,-19vh) rotate(-6deg) scaleX(-1)}
+    78%{transform:translate(-10vw,-13vh) rotate(4deg) scaleX(-1)}
+    92%{transform:translate(1vw,-1vh) rotate(-3deg) scaleX(-1)}
+    100%{transform:translate(0,0) rotate(0) scaleX(1)}
+  }
+  /* Ракета уходит вверх с разгоном, уменьшается до точки и падает обратно */
+  .r-rocket .art{animation:r-rocket 2.8s ease-in-out;}
+  @keyframes r-rocket{
+    0%{transform:translate(0,0) rotate(0) scale(1)}
+    9%{transform:translate(0,2vh) rotate(0) scale(1.07,.9)}
+    17%{transform:translate(0,0) rotate(0) scale(.96,1.08)}
+    45%{transform:translate(5vw,-54vh) rotate(8deg) scale(.55)}
+    57%{transform:translate(6vw,-60vh) rotate(12deg) scale(.45)}
+    73%{transform:translate(2vw,-26vh) rotate(-5deg) scale(.82)}
+    90%{transform:translate(0,2vh) rotate(0) scale(1.05,.92)}
+    100%{transform:translate(0,0) rotate(0) scale(1)}
+  }
+  /* Бабочка порхает рывками, сжатие по ширине читается как взмах крыльев */
+  .r-flutter .art{animation:r-flutter 2.8s ease-in-out;}
+  @keyframes r-flutter{
+    0%{transform:translate(0,0) rotate(0) scaleX(1)}
+    12%{transform:translate(-4vw,-6vh) rotate(-8deg) scaleX(.85)}
+    25%{transform:translate(2vw,-12vh) rotate(6deg) scaleX(1)}
+    38%{transform:translate(9vw,-7vh) rotate(-5deg) scaleX(.8)}
+    50%{transform:translate(12vw,-15vh) rotate(8deg) scaleX(1)}
+    62%{transform:translate(5vw,-18vh) rotate(-6deg) scaleX(.85)}
+    75%{transform:translate(-5vw,-10vh) rotate(5deg) scaleX(1)}
+    88%{transform:translate(-2vw,-3vh) rotate(-3deg) scaleX(.9)}
+    100%{transform:translate(0,0) rotate(0) scaleX(1)}
+  }
   .r-run .art{animation:r-run 2.5s cubic-bezier(.4,0,.5,1);}
   @keyframes r-run{
     0%{transform:translate(0,0) scaleX(1)}
@@ -374,6 +415,11 @@
   .fbNote{font-size:13.5px;color:var(--ink-soft);margin:0;line-height:1.5;}
   .fbNote.ok{color:var(--sage);font-weight:700;}
   .fbNote.err{color:#9A4B4B;font-weight:700;}
+  .vol{display:grid;gap:4px;}
+  .vol label{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:14.5px;color:var(--ink-soft);margin-top:8px;}
+  .vol label b{color:var(--ink);font-variant-numeric:tabular-nums;}
+  .vol input[type="range"]{width:100%;height:36px;accent-color:var(--amber);}
   .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
   /* полям ввода возвращаем выделение и системное меню вставки */
   textarea,input,select{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;touch-action:auto;}
@@ -489,11 +535,14 @@
     </div>
 
     <div class="group">
-      <p class="lbl">Голос</p>
-      <div class="segs" id="voiceSegs">
-        <button class="seg" data-voice="on"><strong>Включён</strong><span>Называет предметы и просит их найти.</span></button>
-        <button class="seg" data-voice="off"><strong>Выключен</strong><span>Только звуки предметов и подсказки движением.</span></button>
+      <p class="lbl">Громкость</p>
+      <div class="vol">
+        <label for="volVoice">Голос <b id="volVoiceVal">100%</b></label>
+        <input type="range" id="volVoice" min="0" max="100" step="5" value="100">
+        <label for="volSfx">Звуки предметов <b id="volSfxVal">100%</b></label>
+        <input type="range" id="volSfx" min="0" max="100" step="5" value="100">
       </div>
+      <p class="fbNote">Отпустите ползунок — услышите пример на выбранной громкости. Голос на нуле выключает вопросы вслух, и тогда игра показывает искомый предмет картинкой в облачке.</p>
     </div>
 
     <div class="group">
@@ -611,14 +660,14 @@
     {id:"cow",     name:"Корова",     art:"🐄", react:"run",    cat:"farm"},
     {id:"bus",     name:"Автобус",    art:"🚌", react:"drive",   cat:"city"},
     {id:"flower",  name:"Цветок",     art:"🌻", react:"spin",   cat:"yard"},
-    {id:"plane",   name:"Самолёт",    art:"✈️", react:"fly",    cat:"city"},
+    {id:"plane",   name:"Самолёт",    art:"✈️", react:"plane",    cat:"city"},
     {id:"fish",    name:"Рыбка",      art:"🐟", react:"swim",   cat:"sea"},
 
     {id:"horse",   name:"Лошадка",    art:"🐴", react:"run",    cat:"farm"},
     {id:"duck",    name:"Уточка",     art:"🦆", react:"run",    cat:"farm"},
     {id:"train",   name:"Поезд",      art:"🚂", react:"drive",   cat:"city"},
-    {id:"rocket",  name:"Ракета",     art:"🚀", react:"fly",    cat:"space"},
-    {id:"butter",  name:"Бабочка",    art:"🦋", react:"fly",    cat:"yard"},
+    {id:"rocket",  name:"Ракета",     art:"🚀", react:"rocket",    cat:"space"},
+    {id:"butter",  name:"Бабочка",    art:"🦋", react:"flutter",    cat:"yard"},
     {id:"bike",    name:"Велосипед",  art:"🚲", react:"drive",   cat:"yard"},
 
     {id:"pig",     name:"Свинка",     art:"🐷", react:"run",    cat:"farm"},
@@ -648,7 +697,9 @@
     collected: STARTER.slice(),
     mode: "find",
     style: "real",
-    voice: true,
+    voice: true,          // производное от voiceVol: голос на нуле — значит выключен
+    voiceVol: 1,
+    sfxVol: 1,
     cue: "auto"   // картинка вопроса: "auto" — только когда голоса нет, "always" — всегда
   };
   var KEY = "naidi-i-otkroy-v1";
@@ -667,7 +718,10 @@
       }
       if(p.mode) S.mode = p.mode;
       if(p.style) S.style = p.style;
-      if(typeof p.voice === "boolean") S.voice = p.voice;
+      if(typeof p.voiceVol === "number") S.voiceVol = Math.min(1, Math.max(0, p.voiceVol));
+      else if(p.voice === false) S.voiceVol = 0;        // сохранения до появления ползунков
+      if(typeof p.sfxVol === "number") S.sfxVol = Math.min(1, Math.max(0, p.sfxVol));
+      S.voice = S.voiceVol > 0.02;
       if(p.cue === "auto" || p.cue === "always") S.cue = p.cue;
     }catch(e){}
   }
@@ -682,7 +736,7 @@
       shelfCount = $("shelfCount"), settings = $("settings"), startScr = $("start");
 
   /* ── Audio: tiny synth so the prototype needs no files ── */
-  var actx = null;
+  var actx = null, sfxBus = null;
 
   /* Звук на iPad молчит по трём причинам, и все три лечатся здесь.
 
@@ -704,6 +758,9 @@
       if(!actx){
         actx = new (window.AudioContext || window.webkitAudioContext)();
         try{ if(navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){}
+        sfxBus = actx.createGain();
+        sfxBus.gain.value = S.sfxVol;
+        sfxBus.connect(actx.destination);
         try{
           var b = actx.createBuffer(1, 1, 22050);
           var s = actx.createBufferSource();
@@ -722,6 +779,8 @@
   document.addEventListener("visibilitychange", function(){
     if(!document.hidden && actx && actx.state !== "running") { try{ actx.resume(); }catch(e){} }
   });
+  function bus(){ var c = ac(); return sfxBus || (c && c.destination); }
+
   function tone(freq, start, dur, type, vol){
     var c = ac(); if(!c) return;
     var o = c.createOscillator(), g = c.createGain();
@@ -730,7 +789,7 @@
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(vol || 0.16, t + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(c.destination);
+    o.connect(g); g.connect(bus());
     o.start(t); o.stop(t + dur + 0.05);
   }
   var SFX = {
@@ -773,7 +832,7 @@
   function speakNow(text, prio){
     try{
       var u = new SpeechSynthesisUtterance(text);
-      u.lang = "ru-RU"; u.rate = 0.85; u.pitch = 1.2; u.volume = 1;
+      u.lang = "ru-RU"; u.rate = 0.85; u.pitch = 1.2; u.volume = S.voiceVol;
       var v = ruVoice(); if(v) u.voice = v;
 
       voiceBusy = true; voiceNow = {text:text, prio:prio};
@@ -1138,7 +1197,7 @@
 
     src.connect(lp); lp.connect(blades); blades.connect(out);
     hum.connect(humGain); humGain.connect(out);
-    out.connect(c.destination);
+    out.connect(bus());
 
     src.start(t); src.stop(t + dur);
     lfo.start(t); lfo.stop(t + dur);
@@ -1249,7 +1308,7 @@
     g.gain.exponentialRampToValueAtTime(peak, t + 0.25);
     g.gain.setValueAtTime(peak, t + Math.max(0.3, dur - 0.45));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(g); g.connect(c.destination);
+    src.connect(g); g.connect(bus());
     src.start(t, offset, dur + 0.1);
     src.stop(t + dur + 0.05);
     return true;
@@ -1502,7 +1561,6 @@
   function syncSegs(){
     document.querySelectorAll("#modeSegs .seg").forEach(function(b){ b.classList.toggle("on", b.dataset.mode === S.mode); });
     document.querySelectorAll("#styleSegs .seg").forEach(function(b){ b.classList.toggle("on", b.dataset.style === S.style); });
-    document.querySelectorAll("#voiceSegs .seg").forEach(function(b){ b.classList.toggle("on", (b.dataset.voice === "on") === S.voice); });
     document.querySelectorAll("#cueSegs .seg").forEach(function(b){ b.classList.toggle("on", b.dataset.cue === S.cue); });
   }
   document.querySelectorAll("#modeSegs .seg").forEach(function(b){
@@ -1511,12 +1569,43 @@
   document.querySelectorAll("#styleSegs .seg").forEach(function(b){
     b.addEventListener("click", function(){ S.style = b.dataset.style; document.body.dataset.style = S.style; save(); syncSegs(); });
   });
-  document.querySelectorAll("#voiceSegs .seg").forEach(function(b){
-    b.addEventListener("click", function(){ S.voice = b.dataset.voice === "on"; save(); syncSegs(); });
-  });
   document.querySelectorAll("#cueSegs .seg").forEach(function(b){
     b.addEventListener("click", function(){ S.cue = b.dataset.cue; save(); syncSegs(); });
   });
+  /* Громкость раздельно: голос несёт задачу, звуки предметов — награду,
+     и родителю нужно уметь приглушить одно, не трогая другое. Например,
+     в дороге убрать сирены, но оставить вопросы. */
+  function applyVolumes(){
+    if(sfxBus) sfxBus.gain.value = S.sfxVol;
+    if(fallbackAudio){ try{ fallbackAudio.volume = S.sfxVol; }catch(e){} }
+    S.voice = S.voiceVol > 0.02;
+  }
+
+  function wireVolume(inputId, labelId, key, preview){
+    var el = $(inputId), lab = $(labelId);
+    el.value = Math.round(S[key] * 100);
+    lab.textContent = el.value + "%";
+    el.addEventListener("input", function(){
+      S[key] = Number(el.value) / 100;
+      lab.textContent = el.value + "%";
+      applyVolumes();
+      save();
+    });
+    // пример даём на отпускании, а не на каждом движении ползунка
+    el.addEventListener("change", preview);
+  }
+
+  wireVolume("volVoice", "volVoiceVal", "voiceVol", function(){
+    if(S.voice) say("Вертолёт", 2);
+  });
+  wireVolume("volSfx", "volSfxVal", "sfxVol", function(){
+    ac();
+    if(!playSample("dog", 0, 1.3, {gain:0.7})){
+      loadSample("dog");
+      tone(880, 0, 0.3, "triangle", 0.25);
+    }
+  });
+
   $("sndTest").addEventListener("click", function(){
     var c = ac();
     var diag = $("sndDiag");
@@ -1555,7 +1644,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-14";
+  var VERSION = "proto-15";
 
   function deviceLine(){
     var ua = navigator.userAgent;
@@ -1628,6 +1717,7 @@
   }
 
   load();
+  applyVolumes();
   document.body.dataset.style = S.style;
   syncShelfNum();
 
