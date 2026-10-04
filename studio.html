@@ -81,7 +81,7 @@
 <body>
 <div class="wrap">
   <h1>Студия записи голоса</h1>
-  <p class="lead"><strong>Сначала запишите две-три фразы и нажмите «Отчёт для проверки»</strong> — по нему сразу видно эхо в комнате, гул и перегруз. Лучше поправить условия в начале, чем переписывать сто фраз.</p>
+  <p class="lead"><strong>Сначала запишите две-три фразы и нажмите «Отчёт для проверки»</strong> — по нему сразу видно эхо, гул и перегруз. Лучше поправить условия в начале, чем переписывать сто фраз. С гарнитурой: микрофон держите у <em>уголка рта</em>, сантиметрах в трёх сбоку, а не перед губами, иначе на «п» и «б» будут хлопки. Проводная гарнитура лучше блютус: по блютус микрофон включает телефонный режим и звук становится узким.</p>
   <p class="lead">Читайте фразу и нажимайте «Записать». Дубли хранятся прямо в браузере, поэтому страницу можно закрыть и вернуться. Обработка — выравнивание громкости, срез низов, подрезка тишины — применяется в конце, при выгрузке, так что сырые записи остаются нетронутыми и набор всегда можно пересобрать иначе.</p>
 
   <div class="bar">
@@ -90,6 +90,7 @@
     </div>
     <span class="count" id="progText">0 из 0</span>
     <button class="ghost" id="micBtn">Включить микрофон</button>
+    <select id="micSel" hidden style="font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--surface);max-width:260px"></select>
   </div>
 
   <div class="card">
@@ -106,6 +107,7 @@
 
     <div class="meter"><i id="meterBar"></i></div>
     <div class="meterNote" id="meterNote"></div>
+    <div class="meterNote" id="micNow"></div>
     <div class="badges" id="badges"></div>
 
     <p class="note"><kbd>Пробел</kbd> — начать и остановить запись, <kbd>Enter</kbd> — дальше, <kbd>P</kbd> — прослушать.</p>
@@ -211,17 +213,48 @@
   var ctx = null, stream = null, proc = null, srcNode = null, sink = null;
   var recording = false, buffers = [], rafId = 0, liveLevel = 0;
 
-  async function initMic(){
+  /* Пишем сырой звук: вся обработка браузера выключена.
+     Шумодав и автогромкость на входе подгрызают хвосты слов и «дышат»
+     на паузах, а отменить их потом нельзя. Чистить, если понадобится,
+     будем при выгрузке — там это обратимо. */
+  var MIC_KEY = "naidi-voice-device";
+
+  async function listMics(){
     try{
-      stream = await navigator.mediaDevices.getUserMedia({audio:{
-        channelCount:1, echoCancellation:false, noiseSuppression:true, autoGainControl:false
-      }});
+      var devs = await navigator.mediaDevices.enumerateDevices();
+      var ins = devs.filter(function(d){ return d.kind === "audioinput"; });
+      var sel = $("micSel");
+      sel.textContent = "";
+      ins.forEach(function(d, i){
+        var o = document.createElement("option");
+        o.value = d.deviceId;
+        o.textContent = d.label || ("Микрофон " + (i + 1));
+        sel.appendChild(o);
+      });
+      var saved = localStorage.getItem(MIC_KEY);
+      if(saved && ins.some(function(d){ return d.deviceId === saved; })) sel.value = saved;
+      sel.hidden = ins.length < 2;
+    }catch(e){}
+  }
+
+  async function initMic(deviceId){
+    var want = {channelCount:1, echoCancellation:false, noiseSuppression:false, autoGainControl:false};
+    if(deviceId) want.deviceId = {exact:deviceId};
+    try{
+      if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
+      stream = await navigator.mediaDevices.getUserMedia({audio:want});
     }catch(e){
       $("curHint").innerHTML = '<span class="err">Микрофон не разрешён. Нажмите на значок замка в адресной строке и разрешите доступ.</span>';
       return false;
     }
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await listMics();
+    var track = stream.getAudioTracks()[0];
+    var name = track && track.label ? track.label : "микрофон";
+    $("micNow").textContent = "Пишем через: " + name;
+    if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
+    if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
     srcNode = ctx.createMediaStreamSource(stream);
+    if(proc){ srcNode.connect(proc); $("recBtn").disabled = false; return true; }
     proc = ctx.createScriptProcessor(4096, 1, 1);
     proc.onaudioprocess = function(e){
       var d = e.inputBuffer.getChannelData(0);
@@ -651,7 +684,11 @@
   }
 
   /* ── Кнопки ─────────────────────────────────────────── */
-  $("micBtn").addEventListener("click", initMic);
+  $("micBtn").addEventListener("click", function(){ initMic(localStorage.getItem(MIC_KEY) || null); });
+  $("micSel").addEventListener("change", function(){
+    localStorage.setItem(MIC_KEY, $("micSel").value);
+    initMic($("micSel").value);
+  });
   $("recBtn").addEventListener("click", function(){ recording ? stopRec() : startRec(); });
   $("playBtn").addEventListener("click", play);
   $("nextBtn").addEventListener("click", function(){ step(1); });
