@@ -779,6 +779,19 @@
   document.addEventListener("visibilitychange", function(){
     if(!document.hidden && actx && actx.state !== "running") { try{ actx.resume(); }catch(e){} }
   });
+
+  // Поворот планшета или появление окна из фона: пересобрать экран выбора,
+  // пока ребёнок на нём ничего не нажал — иначе сетка останется от старого
+  // размера экрана. Если выбор уже начат, не трогаем: потерять его хуже.
+  var relayoutTimer = null;
+  function relayoutSoon(){
+    clearTimeout(relayoutTimer);
+    relayoutTimer = setTimeout(function(){
+      if(!chooser.hidden && !picks.length) startChooser();
+    }, 250);
+  }
+  window.addEventListener("resize", relayoutSoon);
+  window.addEventListener("orientationchange", relayoutSoon);
   function bus(){ var c = ac(); return sfxBus || (c && c.destination); }
 
   function tone(freq, start, dur, type, vol){
@@ -1053,6 +1066,11 @@
     var cs = getComputedStyle(chooser);
     var w = chooser.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     var h = chooser.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    // Страница может строиться, когда размеров ещё нет: открыли в фоновой
+    // вкладке, свернули окно. Тогда без запасных значений экран выбора
+    // собрался бы из двух предметов вместо восьми.
+    if(!(w > 50)) w = Math.max(280, window.innerWidth - 32);
+    if(!(h > 50)) h = Math.max(240, window.innerHeight - 100);
     var gap = Math.max(12, Math.round(Math.min(w, h) * 0.05));
 
     for(var n = Math.min(8, S.collected.length); n >= 2; n--){
@@ -1731,7 +1749,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-16";
+  var VERSION = "proto-17";
 
   function deviceLine(){
     var ua = navigator.userAgent;
