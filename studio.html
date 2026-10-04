@@ -822,6 +822,16 @@
 
   openDB().then(dbAll).then(function(saved){
     clips = saved || {};
+    // Замеры считаются алгоритмом, а он меняется. Пересчитываем при загрузке,
+    // иначе у записей, сделанных до правки, плашки врут: например, показывают
+    // громкость щелчка от кнопки вместо громкости слова.
+    Object.keys(clips).forEach(function(k){
+      var c = clips[k];
+      if(!c || !c.pcm) return;
+      var m = measure(c.pcm, c.rate);
+      c.peak = m.peak; c.rms = m.rms; c.noise = m.noise;
+      c.dur = m.dur; c.raw = m.raw; c.dropped = m.dropped;
+    });
     var keys = Object.keys(clips);
     if(keys.length) $("tip").textContent = "Восстановлено из прошлой сессии: " + keys.length + " фраз.";
     // встать на первую незаписанную
