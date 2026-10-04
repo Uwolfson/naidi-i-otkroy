@@ -827,22 +827,99 @@
      Приоритеты: 0 — называние неверно нажатого предмета (легко выбрасывается),
                  1 — вопрос раунда,
                  2 — реакция на действие ребёнка: одобрение, коробка, награда. */
-  var voiceBusy = false, voiceNow = null, voicePending = null, voiceFailed = false;
+  /* ── Записанный голос ───────────────────────────────
+     Цепочка поиска реплики: записанный клип → синтезатор речи. Позже перед
+     ними встанет третий уровень — запись родителя на самом устройстве.
+     Чтобы это не требовало переделки, игра просит реплику по КЛЮЧУ, а текст
+     остаётся лишь запасным вариантом, который читает синтезатор.
 
-  function speakNow(text, prio){
+     Ключи: n_<id> — название, q_<id> — «Где …?», t_<id> — «Это ….»,
+            p_0…p_9 — одобрение, s_* — служебные реплики.
+
+     Какие записи существуют, игра узнаёт из voice/manifest.json. Файла нет —
+     нет и лишних запросов: всё говорит синтезатор, ровно как раньше. */
+  var voiceHave = null, voiceClips = {}, voiceAsked = {}, voiceBus = null, playingClips = [];
+
+  function voiceOut(){
+    var c = ac(); if(!c) return null;
+    if(!voiceBus){ voiceBus = c.createGain(); voiceBus.connect(c.destination); }
+    voiceBus.gain.value = S.voiceVol;
+    return voiceBus;
+  }
+
+  function loadVoiceManifest(){
+    if(voiceHave !== null) return;
+    voiceHave = {};
+    fetch("voice/manifest.json")
+      .then(function(r){ if(!r.ok) throw new Error("нет записей"); return r.json(); })
+      .then(function(data){
+        var list = data && data.keys ? data.keys : data;
+        if(!list || !list.length) return;
+        list.forEach(function(k){ voiceHave[k] = true; });
+        // клипы крошечные, тянем сразу все: иначе первая фраза каждого вида
+        // успеет прозвучать синтезатором, и голос будет скакать
+        list.forEach(loadClip);
+      })
+      .catch(function(){});
+  }
+
+  function loadClip(key){
+    if(voiceAsked[key] || !voiceHave || !voiceHave[key]) return;
+    var c = ac(); if(!c) return;
+    voiceAsked[key] = true;
+    fetch("voice/" + key + ".mp3")
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function(ab){ return new Promise(function(res, rej){ c.decodeAudioData(ab, res, rej); }); })
+      .then(function(buf){ voiceClips[key] = buf; })
+      .catch(function(){ voiceClips[key] = null; });
+  }
+
+  function clipsReady(keys){
+    if(!keys || !keys.length) return false;
+    for(var i = 0; i < keys.length; i++){ if(!voiceClips[keys[i]]) return false; }
+    return true;
+  }
+
+  // Клипы идут встык с короткой паузой: «Это машинка.» и следом «Где вертолёт?»
+  function playClips(keys, done){
+    var c = ac(), out = voiceOut();
+    if(!c || !out) return false;
+    var t = c.currentTime + 0.02, last = null;
+    for(var i = 0; i < keys.length; i++){
+      var buf = voiceClips[keys[i]];
+      var src = c.createBufferSource();
+      src.buffer = buf;
+      src.connect(out);
+      src.start(t);
+      playingClips.push(src);
+      t += buf.duration + 0.12;
+      last = src;
+    }
+    var guard = setTimeout(done, (t - c.currentTime) * 1000 + 250);
+    if(last) last.onended = function(){ clearTimeout(guard); done(); };
+    return true;
+  }
+
+  var voiceBusy = false, voiceNow = null, voicePending = null, voiceFailed = false, voiceGen = 0;
+
+  function speakNow(entry){
+    var gen = ++voiceGen, closed = false;
+    voiceBusy = true; voiceNow = entry;
+
+    function finish(){
+      if(closed || gen !== voiceGen) return;
+      closed = true;
+      voiceBusy = false; voiceNow = null; playingClips = [];
+      var next = voicePending; voicePending = null;
+      if(next) speakNow(next);
+    }
+
+    if(clipsReady(entry.keys) && playClips(entry.keys, finish)) return;
+
     try{
-      var u = new SpeechSynthesisUtterance(text);
+      var u = new SpeechSynthesisUtterance(entry.text);
       u.lang = "ru-RU"; u.rate = 0.85; u.pitch = 1.2; u.volume = S.voiceVol;
       var v = ruVoice(); if(v) u.voice = v;
-
-      voiceBusy = true; voiceNow = {text:text, prio:prio};
-      var closed = false;
-      function finish(){
-        if(closed) return; closed = true;
-        voiceBusy = false; voiceNow = null;
-        var next = voicePending; voicePending = null;
-        if(next) speakNow(next.text, next.prio);
-      }
       u.onend = finish;
       u.onerror = function(ev){
         // interrupted и canceled — это наша же остановка, не поломка
@@ -853,34 +930,40 @@
         finish();
       };
       // Safari и часть Android молчат про onend — подстраховка по длине фразы
-      setTimeout(finish, 700 + text.length * 120);
+      setTimeout(finish, 700 + entry.text.length * 120);
       window.speechSynthesis.speak(u);
     }catch(e){
       voiceBusy = false; voiceNow = null;
       var p = voicePending; voicePending = null;
-      if(p) setTimeout(function(){ speakNow(p.text, p.prio); }, 50);
+      if(p) setTimeout(function(){ speakNow(p); }, 50);
     }
   }
 
-  function say(text, prio){
+  function say(text, prio, keys){
     prio = prio || 0;
-    if(!S.voice || !window.speechSynthesis) return;
-    text = String(text).trim();
-    if(!text) return;
+    text = String(text || "").trim();
+    keys = keys ? (typeof keys === "string" ? [keys] : keys) : null;
+    if(keys) keys.forEach(loadClip);
+    if(!S.voice) return;
+    if(!clipsReady(keys) && (!text || !window.speechSynthesis)) return;
 
+    var entry = {text:text, prio:prio, keys:keys, id: keys ? keys.join("+") : text};
     if(voiceBusy){
-      if(voiceNow && voiceNow.text === text) return;        // ровно это и говорим
-      if(voicePending && voicePending.text === text) return; // уже стоит следующим
+      if(voiceNow && voiceNow.id === entry.id) return;        // ровно это и говорим
+      if(voicePending && voicePending.id === entry.id) return; // уже стоит следующим
       // равный приоритет — побеждает более свежая реплика; низкий высокую не вытесняет
-      if(!voicePending || prio >= voicePending.prio) voicePending = {text:text, prio:prio};
+      if(!voicePending || prio >= voicePending.prio) voicePending = entry;
       return;
     }
-    speakNow(text, prio);
+    speakNow(entry);
   }
 
   // Жёсткая остановка — только когда экран меняется и фраза теряет смысл
   function stopSpeech(){
+    voiceGen++;
     voiceBusy = false; voiceNow = null; voicePending = null;
+    playingClips.forEach(function(s){ try{ s.stop(); }catch(e){} });
+    playingClips = [];
     try{ window.speechSynthesis && window.speechSynthesis.cancel(); }catch(e){}
   }
 
@@ -908,7 +991,9 @@
      в облачке. Задача от этого меняется — «найди такую же» вместо «найди
      по слову», — поэтому по умолчанию облачко только запасной вариант. */
   function voiceLikelyWorks(){
-    return S.voice && !!window.speechSynthesis && !voiceFailed && !!ruVoice();
+    if(!S.voice) return false;
+    if(voiceHave && Object.keys(voiceHave).length) return true;   // есть записи
+    return !!window.speechSynthesis && !voiceFailed && !!ruVoice();
   }
   function showCue(item){
     var on = S.cue === "always" || !voiceLikelyWorks();
@@ -1028,7 +1113,7 @@
       chooser.appendChild(b);
     });
     chooser.hidden = false;
-    askTimer = setTimeout(function(){ say("Выбирай, что нравится!", 1); }, 520);
+    askTimer = setTimeout(function(){ say("Выбирай, что нравится!", 1, "s_choose"); }, 520);
     // Один раз за сессию: если ребёнок замер перед экраном выбора, рука
     // показывает, что картинки можно просто трогать.
     if(!chooserDemoDone){
@@ -1047,7 +1132,7 @@
     var item = BY_ID[el.dataset.id];
     ac(); SFX.pop();
     picks.push(item.id);
-    say(item.name, 2);
+    say(item.name, 2, "n_" + item.id);
     // остальные предметы остаются нажимаемыми: здесь никто не ждёт своей очереди
     playReaction(el, item, function(){
       el.classList.add("taken");
@@ -1123,7 +1208,7 @@
 
     roundTaps = 0;
     showCue(target);
-    askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1); }, 620);
+    askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1, "q_" + target.id); }, 620);
     // Первый раунд сессии — обучающий: подсказка вдвое раньше, и если ребёнок
     // не нажимает ничего, рука показывает, куда. Дальше — обычные 7 секунд.
     armHint(sessionRounds === 0 ? 3500 : 7000);
@@ -1352,7 +1437,8 @@
       el.classList.remove("nope"); void el.offsetWidth; el.classList.add("nope");
       var now = Date.now();
       if(now - lastWrongSfx > 450){ SFX.wrong(); lastWrongSfx = now; }
-      say("Это " + item.name.toLowerCase() + ". А где " + target.name.toLowerCase() + "?", 0);
+      say("Это " + item.name.toLowerCase() + ". Где " + target.name.toLowerCase() + "?", 0,
+            ["t_" + item.id, "q_" + target.id]);
       armHint(3500);
       return;
     }
@@ -1361,7 +1447,8 @@
     stage.querySelectorAll(".item").forEach(function(o){ o.classList.remove("hint"); });
     SFX.right();
     confetti(el);
-    say(pick(PRAISE) + " " + target.name + "!", 2);
+    var pi = Math.floor(Math.random() * PRAISE.length);
+    say(PRAISE[pi] + " " + target.name + "!", 2, ["p_" + pi, "n_" + target.id]);
     playReaction(el, item, function(){
       save();
       // Коробка приходит не по счётчику, а когда пройдены все выбранные пары —
@@ -1387,7 +1474,7 @@
     boxTip.classList.remove("on");
     boxLayer.hidden = false;
     tone(660, 0, 0.5, "sine", 0.1); tone(440, 0.12, 0.6, "sine", 0.1);
-    say("Ой! Что это?", 2);
+    say("Ой! Что это?", 2, "s_box");
     setTimeout(function(){ if(!boxTaps) box.classList.add("idle"); }, 800);
     boxTipTimer = setTimeout(function(){ boxTip.classList.add("on"); }, 3200);
   }
@@ -1442,7 +1529,7 @@
     revealName.textContent = item.name;
     revealHint.textContent = "Нажми — покажу, что он умеет";
     revealLayer.hidden = false;
-    say(item.name + "!", 2);
+    say(item.name + "!", 2, "n_" + item.id);
   }
 
   onTap(revealLayer, function(){
@@ -1450,7 +1537,7 @@
     revealBusy = true;
     revealHint.textContent = "";
     SFX.pop();
-    say(revealItem.name, 2);
+    say(revealItem.name, 2, "n_" + revealItem.id);
     var wrap = document.getElementById("revealInner");
     revealArt.classList.add("art");
     wrap.classList.add("r-" + revealItem.react);
@@ -1516,7 +1603,7 @@
       if(owned){
         cell.setAttribute("aria-label", item.name);
         onTap(cell, function(){
-          ac(); SFX.pop(); say(item.name, 2);
+          ac(); SFX.pop(); say(item.name, 2, "n_" + item.id);
           cell.classList.remove("r-" + item.react); void cell.offsetWidth;
           cell.classList.add("r-" + item.react);
           art.addEventListener("animationend", function(){ cell.classList.remove("r-" + item.react); }, {once:true});
@@ -1596,7 +1683,7 @@
   }
 
   wireVolume("volVoice", "volVoiceVal", "voiceVol", function(){
-    if(S.voice) say("Вертолёт", 2);
+    if(S.voice) say("Вертолёт", 2, "n_heli");
   });
   wireVolume("volSfx", "volSfxVal", "sfxVol", function(){
     ac();
@@ -1644,7 +1731,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-15";
+  var VERSION = "proto-16";
 
   function deviceLine(){
     var ua = navigator.userAgent;
@@ -1724,7 +1811,8 @@
   $("startBtn").addEventListener("click", function(){
     ac();
     unlockSpeech();
-    unlockFallbackAudio();   // внутри касания, иначе iOS потом не разрешит
+    unlockFallbackAudio();
+    loadVoiceManifest();   // внутри касания, иначе iOS потом не разрешит
     startScr.hidden = true;
     buildRound();
   });

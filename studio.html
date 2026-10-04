@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Студия записи голоса — «Найди и открой»</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#F4F2EC; --surface:#fff; --surface-2:#FAF8F3;
+    --ink:#2B2822; --ink-soft:#6C6559; --ink-faint:#9A9284; --rule:#E3DDCF;
+    --teal:#2F6E5E; --amber:#C77A18; --warn:#A24B3C; --ok:#2F6E5E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.55 "Golos Text","Segoe UI",system-ui,sans-serif;}
+  .wrap{max-width:1000px;margin:0 auto;padding:22px 18px 70px;}
+  h1{font-size:23px;margin:0 0 4px;}
+  .lead{color:var(--ink-soft);font-size:14.5px;margin:0 0 20px;max-width:70ch;}
+
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+    background:var(--surface);border:1px solid var(--rule);border-radius:12px;
+    padding:12px 16px;margin-bottom:16px;}
+  .bar .grow{flex:1;min-width:140px;}
+  .prog{height:8px;border-radius:99px;background:var(--rule);overflow:hidden;}
+  .prog i{display:block;height:100%;background:var(--teal);width:0;transition:width .2s;}
+  .count{font-variant-numeric:tabular-nums;font-size:14px;color:var(--ink-soft);white-space:nowrap;}
+
+  .card{background:var(--surface);border:1px solid var(--rule);border-radius:16px;
+    padding:22px;margin-bottom:16px;}
+  .key{font:12px ui-monospace,monospace;color:var(--ink-faint);letter-spacing:.06em;}
+  .phrase{font-size:clamp(26px,5vw,42px);line-height:1.15;font-weight:600;margin:6px 0 4px;}
+  .hint{color:var(--ink-soft);font-size:14px;margin:0 0 18px;}
+
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  button{font:inherit;border:0;border-radius:999px;padding:13px 22px;font-weight:600;cursor:pointer;}
+  button:disabled{opacity:.45;cursor:default;}
+  .primary{background:var(--teal);color:#fff;}
+  .rec{background:var(--warn);color:#fff;min-width:190px;}
+  .rec.on{animation:pulse 1s infinite;}
+  @keyframes pulse{50%{filter:brightness(1.25)}}
+  .ghost{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule);}
+
+  .meter{height:12px;border-radius:99px;background:var(--rule);overflow:hidden;margin:16px 0 6px;}
+  .meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok) 60%,#D6A33A 80%,var(--warn));}
+  .meterNote{font-size:12.5px;color:var(--ink-faint);min-height:17px;}
+
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+  .badge{font-size:12.5px;border-radius:99px;padding:4px 11px;background:var(--surface-2);
+    box-shadow:inset 0 0 0 1px var(--rule);color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+  .badge.bad{background:#FBEDEA;color:var(--warn);box-shadow:inset 0 0 0 1px #E8C7BF;}
+  .badge.good{background:#E6F0EC;color:var(--ok);box-shadow:inset 0 0 0 1px #C6DCD3;}
+
+  .listHead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:26px 0 10px;}
+  .listHead h2{font-size:17px;margin:0;}
+  .filters{display:flex;gap:6px;}
+  .filters button{padding:7px 14px;font-size:13.5px;}
+  .filters .on{background:var(--ink);color:var(--bg);}
+
+  ul{list-style:none;margin:0;padding:0;display:grid;gap:5px;}
+  li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;
+    background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:9px 13px;cursor:pointer;}
+  li.cur{box-shadow:0 0 0 2px var(--amber);}
+  li .dot{width:10px;height:10px;border-radius:50%;background:var(--rule);}
+  li.done .dot{background:var(--ok);}
+  li.warn .dot{background:var(--warn);}
+  li .txt{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  li .k{font:11.5px ui-monospace,monospace;color:var(--ink-faint);}
+
+  .foot{position:fixed;left:0;right:0;bottom:0;background:rgba(244,242,236,.95);
+    border-top:1px solid var(--rule);padding:10px 18px;backdrop-filter:blur(8px);
+    display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
+    padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));}
+  .note{font-size:13px;color:var(--ink-soft);margin:14px 0 0;}
+  .err{color:var(--warn);font-weight:600;}
+  kbd{font:12px ui-monospace,monospace;background:var(--surface-2);border:1px solid var(--rule);
+    border-radius:5px;padding:1px 6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Студия записи голоса</h1>
+  <p class="lead">Читайте фразу и нажимайте «Записать». Дубли хранятся прямо в браузере, поэтому страницу можно закрыть и вернуться. Обработка — выравнивание громкости, срез низов, подрезка тишины — применяется в конце, при выгрузке, так что сырые записи остаются нетронутыми и набор всегда можно пересобрать иначе.</p>
+
+  <div class="bar">
+    <div class="grow">
+      <div class="prog"><i id="progBar"></i></div>
+    </div>
+    <span class="count" id="progText">0 из 0</span>
+    <button class="ghost" id="micBtn">Включить микрофон</button>
+  </div>
+
+  <div class="card">
+    <div class="key" id="curKey">—</div>
+    <div class="phrase" id="curText">Нажмите «Включить микрофон»</div>
+    <p class="hint" id="curHint"></p>
+
+    <div class="controls">
+      <button class="rec" id="recBtn" disabled>● Записать</button>
+      <button class="ghost" id="playBtn" disabled>▶ Прослушать</button>
+      <button class="ghost" id="prevBtn">← Назад</button>
+      <button class="primary" id="nextBtn">Дальше →</button>
+    </div>
+
+    <div class="meter"><i id="meterBar"></i></div>
+    <div class="meterNote" id="meterNote"></div>
+    <div class="badges" id="badges"></div>
+
+    <p class="note"><kbd>Пробел</kbd> — начать и остановить запись, <kbd>Enter</kbd> — дальше, <kbd>P</kbd> — прослушать.</p>
+  </div>
+
+  <div class="listHead">
+    <h2>Все фразы</h2>
+    <div class="filters">
+      <button class="ghost on" data-filter="all">Все</button>
+      <button class="ghost" data-filter="todo">Не записаны</button>
+      <button class="ghost" data-filter="warn">С замечаниями</button>
+    </div>
+  </div>
+  <ul id="list"></ul>
+
+  <p class="note" id="tip"></p>
+</div>
+
+<div class="foot">
+  <button class="primary" id="exportBtn">Скачать всё одним архивом</button>
+  <button class="ghost" id="exportRawBtn">Скачать сырые записи</button>
+  <button class="ghost" id="clearBtn">Удалить все записи</button>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ── Что записываем ─────────────────────────────────
+     Ключи те же, что игра просит у озвучки: n_<id> название,
+     q_<id> вопрос, t_<id> называние нажатого, p_N одобрение,
+     s_* служебные. Порядок — группами, чтобы не прыгать между
+     интонациями: сначала все названия, потом все вопросы и так далее. */
+  var ITEMS = [
+    ["ball","Мяч"],["bear","Мишка"],["car","Машинка"],["dog","Собачка"],
+    ["apple","Яблоко"],["heli","Вертолёт"],["cat","Котик"],["cow","Корова"],
+    ["bus","Автобус"],["flower","Цветок"],["plane","Самолёт"],["fish","Рыбка"],
+    ["horse","Лошадка"],["duck","Уточка"],["train","Поезд"],["rocket","Ракета"],
+    ["butter","Бабочка"],["bike","Велосипед"],["pig","Свинка"],["sheep","Овечка"],
+    ["fire","Пожарная"],["amb","Скорая"],["boat","Кораблик"],["star","Звёздочка"],
+    ["chick","Курочка"],["tractor","Трактор"],["dolphin","Дельфин"],["crab","Крабик"],
+    ["moon","Луна"],["book","Книжка"],["cup","Чашка"],["lamp","Лампа"]
+  ];
+  var PRAISE = ["Верно!","Точно!","Правильно!","Да!","Ага!","Есть!","Так и есть!","Вот так!","Получилось!","Да, верно!"];
+
+  var PHRASES = [];
+  ITEMS.forEach(function(it){ PHRASES.push({key:"n_"+it[0], text:it[1],
+    hint:"Просто название. Тепло, с улыбкой, как показываете ребёнку игрушку."}); });
+  ITEMS.forEach(function(it){ PHRASES.push({key:"q_"+it[0], text:"Где "+it[1].toLowerCase()+"?",
+    hint:"Вопрос. Интонация идёт вверх на самом слове, без строгости — это приглашение, а не экзамен."}); });
+  ITEMS.forEach(function(it){ PHRASES.push({key:"t_"+it[0], text:"Это "+it[1].toLowerCase()+".",
+    hint:"Спокойная подсказка в ответ на неверное нажатие. Без разочарования в голосе."}); });
+  PRAISE.forEach(function(p,i){ PHRASES.push({key:"p_"+i, text:p,
+    hint:"Радость за то, что получилось. Коротко и живо."}); });
+  PHRASES.push({key:"s_choose", text:"Выбирай, что нравится!", hint:"Приглашение в начале круга."});
+  PHRASES.push({key:"s_box",    text:"Ой! Что это?",            hint:"Удивление: сверху упала коробка."});
+
+  var $ = function(id){ return document.getElementById(id); };
+  var idx = 0, filter = "all";
+  var clips = {};               // key -> {pcm, rate, peak, rms, noise, dur}
+
+  /* ── Хранилище ───────────────────────────────────────
+     Сырые записи переживают перезагрузку: 108 фраз за один присест —
+     это час работы, и терять его из-за случайно закрытой вкладки нельзя. */
+  var db = null;
+  function openDB(){
+    return new Promise(function(res){
+      try{
+        var rq = indexedDB.open("naidi-voice", 1);
+        rq.onupgradeneeded = function(){ rq.result.createObjectStore("clips"); };
+        rq.onsuccess = function(){ db = rq.result; res(true); };
+        rq.onerror = function(){ res(false); };
+      }catch(e){ res(false); }
+    });
+  }
+  function dbPut(key, val){
+    if(!db) return;
+    try{ db.transaction("clips","readwrite").objectStore("clips").put(val, key); }catch(e){}
+  }
+  function dbDel(key){
+    if(!db) return;
+    try{ db.transaction("clips","readwrite").objectStore("clips").delete(key); }catch(e){}
+  }
+  function dbAll(){
+    return new Promise(function(res){
+      if(!db) return res({});
+      var out = {};
+      try{
+        var st = db.transaction("clips","readonly").objectStore("clips");
+        var cur = st.openCursor();
+        cur.onsuccess = function(){
+          var c = cur.result;
+          if(!c) return res(out);
+          out[c.key] = c.value; c.continue();
+        };
+        cur.onerror = function(){ res(out); };
+      }catch(e){ res(out); }
+    });
+  }
+
+  /* ── Микрофон и запись ──────────────────────────────── */
+  var ctx = null, stream = null, proc = null, srcNode = null, sink = null;
+  var recording = false, buffers = [], rafId = 0, liveLevel = 0;
+
+  async function initMic(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({audio:{
+        channelCount:1, echoCancellation:false, noiseSuppression:true, autoGainControl:false
+      }});
+    }catch(e){
+      $("curHint").innerHTML = '<span class="err">Микрофон не разрешён. Нажмите на значок замка в адресной строке и разрешите доступ.</span>';
+      return false;
+    }
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    srcNode = ctx.createMediaStreamSource(stream);
+    proc = ctx.createScriptProcessor(4096, 1, 1);
+    proc.onaudioprocess = function(e){
+      var d = e.inputBuffer.getChannelData(0);
+      var peak = 0;
+      for(var i = 0; i < d.length; i++){ var v = Math.abs(d[i]); if(v > peak) peak = v; }
+      liveLevel = peak;
+      if(recording) buffers.push(new Float32Array(d));
+    };
+    // громкость нуль: иначе микрофон пойдёт в динамики и заведётся
+    sink = ctx.createGain(); sink.gain.value = 0;
+    srcNode.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+
+    $("micBtn").textContent = "Микрофон включён";
+    $("micBtn").disabled = true;
+    $("recBtn").disabled = false;
+    drawMeter();
+    render();
+    return true;
+  }
+
+  function drawMeter(){
+    var pct = Math.min(100, liveLevel * 140);
+    $("meterBar").style.width = pct + "%";
+    if(recording){
+      $("meterNote").textContent = liveLevel > 0.98 ? "Перегрузка — отодвиньтесь от микрофона"
+        : liveLevel < 0.05 ? "Очень тихо — говорите ближе"
+        : "Идёт запись";
+    }
+    rafId = requestAnimationFrame(drawMeter);
+  }
+
+  function startRec(){
+    if(!ctx || recording) return;
+    if(ctx.state !== "running") ctx.resume();
+    buffers = []; recording = true;
+    $("recBtn").textContent = "■ Остановить";
+    $("recBtn").classList.add("on");
+  }
+
+  function stopRec(){
+    if(!recording) return;
+    recording = false;
+    $("recBtn").textContent = "● Записать";
+    $("recBtn").classList.remove("on");
+    $("meterNote").textContent = "";
+
+    var len = 0, i;
+    for(i = 0; i < buffers.length; i++) len += buffers[i].length;
+    if(len < ctx.sampleRate * 0.15){ $("meterNote").textContent = "Слишком коротко, запишите ещё раз"; return; }
+
+    var pcm = new Float32Array(len), off = 0;
+    for(i = 0; i < buffers.length; i++){ pcm.set(buffers[i], off); off += buffers[i].length; }
+    buffers = [];
+
+    var rec = measure(pcm, ctx.sampleRate);
+    rec.pcm = pcm; rec.rate = ctx.sampleRate;
+    clips[cur().key] = rec;
+    dbPut(cur().key, rec);
+    render();
+  }
+
+  // Замеры вместо слуха: по ним видно тихие, перегруженные и шумные дубли
+  function measure(pcm, rate){
+    var peak = 0, sum = 0, i;
+    for(i = 0; i < pcm.length; i++){
+      var v = Math.abs(pcm[i]);
+      if(v > peak) peak = v;
+      sum += pcm[i] * pcm[i];
+    }
+    var rms = Math.sqrt(sum / Math.max(1, pcm.length));
+    // шум — самый тихий участок в сто миллисекунд
+    var win = Math.max(1, Math.floor(rate * 0.1)), noise = 1;
+    for(i = 0; i + win <= pcm.length; i += win){
+      var s = 0;
+      for(var j = 0; j < win; j++) s += pcm[i + j] * pcm[i + j];
+      var r = Math.sqrt(s / win);
+      if(r < noise) noise = r;
+    }
+    if(!isFinite(noise)) noise = 0;
+    return {peak:peak, rms:rms, noise:noise, dur:pcm.length / rate};
+  }
+
+  var db20 = function(x){ return x > 0 ? Math.round(20 * Math.log10(x)) : -99; };
+
+  function problems(rec){
+    var out = [];
+    if(!rec) return out;
+    if(rec.peak >= 0.985) out.push("перегруз");
+    if(rec.peak < 0.08) out.push("очень тихо");
+    if(rec.noise > 0.012) out.push("шумно");
+    if(rec.dur > 4) out.push("длинно");
+    return out;
+  }
+
+  /* ── Обработка при выгрузке ──────────────────────────
+     Сырое не трогаем, чтобы можно было пересобрать иначе.
+     Цепочка: срез низов → подрезка тишины → нормализация → микрофейды. */
+  async function processClip(rec){
+    var rate = rec.rate, pcm = rec.pcm;
+
+    // срез ниже 90 Гц: гул, стук стола, дыхание в микрофон
+    try{
+      var off = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, pcm.length, rate);
+      var buf = off.createBuffer(1, pcm.length, rate);
+      buf.copyToChannel ? buf.copyToChannel(pcm, 0) : buf.getChannelData(0).set(pcm);
+      var src = off.createBufferSource(); src.buffer = buf;
+      var hp = off.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 90; hp.Q.value = 0.7;
+      src.connect(hp); hp.connect(off.destination); src.start(0);
+      var done = await off.startRendering();
+      pcm = done.getChannelData(0);
+    }catch(e){ /* фильтр не вышел — работаем с сырым */ }
+
+    // подрезка тишины по порогу от пика
+    var peak = 0, i;
+    for(i = 0; i < pcm.length; i++){ var v = Math.abs(pcm[i]); if(v > peak) peak = v; }
+    var th = Math.max(0.008, peak * 0.07);
+    var s = 0, e = pcm.length - 1;
+    while(s < pcm.length && Math.abs(pcm[s]) < th) s++;
+    while(e > s && Math.abs(pcm[e]) < th) e--;
+    var pad = Math.floor(rate * 0.05);
+    s = Math.max(0, s - pad); e = Math.min(pcm.length - 1, e + pad);
+    var out = new Float32Array(pcm.subarray(s, e + 1));
+
+    // нормализация: все реплики одной громкости, иначе в игре слышны скачки
+    var g = peak > 0 ? 0.89 / peak : 1;
+    for(i = 0; i < out.length; i++) out[i] *= g;
+
+    // микрофейды, чтобы не щёлкало на стыках
+    var f = Math.min(Math.floor(rate * 0.012), Math.floor(out.length / 2));
+    for(i = 0; i < f; i++){
+      out[i] *= i / f;
+      out[out.length - 1 - i] *= i / f;
+    }
+    return {pcm:out, rate:rate};
+  }
+
+  function encodeMp3(pcm, rate){
+    if(typeof lamejs === "undefined") return encodeWav(pcm, rate);
+    var enc = new lamejs.Mp3Encoder(1, rate, 96);
+    var s16 = new Int16Array(pcm.length);
+    for(var i = 0; i < pcm.length; i++){
+      var v = Math.max(-1, Math.min(1, pcm[i]));
+      s16[i] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+    }
+    var parts = [], block = 1152;
+    for(var o = 0; o < s16.length; o += block){
+      var b = enc.encodeBuffer(s16.subarray(o, o + block));
+      if(b.length) parts.push(new Uint8Array(b));
+    }
+    var tail = enc.flush();
+    if(tail.length) parts.push(new Uint8Array(tail));
+    return new Blob(parts, {type:"audio/mpeg"});
+  }
+
+  function encodeWav(pcm, rate){
+    var n = pcm.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    var w = function(off, str){ for(var i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i)); };
+    w(0,"RIFF"); v.setUint32(4, 36 + n * 2, true); w(8,"WAVEfmt ");
+    v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+    v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true);
+    v.setUint16(34,16,true); w(36,"data"); v.setUint32(40, n*2, true);
+    for(var i = 0; i < n; i++){
+      var x = Math.max(-1, Math.min(1, pcm[i]));
+      v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7FFF, true);
+    }
+    return new Blob([buf], {type:"audio/wav"});
+  }
+
+  function download(blob, name){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  /* ── Экран ──────────────────────────────────────────── */
+  function cur(){ return PHRASES[idx]; }
+
+  function render(){
+    var p = cur(), rec = clips[p.key];
+    $("curKey").textContent = p.key + "  ·  " + (idx + 1) + " из " + PHRASES.length;
+    $("curText").textContent = p.text;
+    if(!$("curHint").querySelector(".err")) $("curHint").textContent = p.hint;
+    $("playBtn").disabled = !rec;
+
+    var done = Object.keys(clips).length;
+    $("progBar").style.width = (done / PHRASES.length * 100) + "%";
+    $("progText").textContent = done + " из " + PHRASES.length;
+
+    var b = $("badges"); b.textContent = "";
+    if(rec){
+      var probs = problems(rec);
+      [["длительность", rec.dur.toFixed(2) + " с"],
+       ["громкость", db20(rec.peak) + " dB"],
+       ["шум", db20(rec.noise) + " dB"]].forEach(function(pair){
+        var el = document.createElement("span");
+        el.className = "badge";
+        el.textContent = pair[0] + ": " + pair[1];
+        b.appendChild(el);
+      });
+      var verdict = document.createElement("span");
+      verdict.className = "badge " + (probs.length ? "bad" : "good");
+      verdict.textContent = probs.length ? probs.join(", ") : "в порядке";
+      b.appendChild(verdict);
+    }
+    renderList();
+  }
+
+  function renderList(){
+    var ul = $("list");
+    ul.textContent = "";
+    PHRASES.forEach(function(p, i){
+      var rec = clips[p.key], probs = problems(rec);
+      if(filter === "todo" && rec) return;
+      if(filter === "warn" && (!rec || !probs.length)) return;
+      var li = document.createElement("li");
+      li.className = (rec ? (probs.length ? "warn" : "done") : "") + (i === idx ? " cur" : "");
+      li.innerHTML = '<span class="dot"></span><span class="txt"></span><span class="k"></span>';
+      li.querySelector(".txt").textContent = p.text;
+      li.querySelector(".k").textContent = rec ? (probs.length ? probs[0] : rec.dur.toFixed(1) + "с") : "—";
+      li.addEventListener("click", function(){ idx = i; render(); window.scrollTo({top:0,behavior:"smooth"}); });
+      ul.appendChild(li);
+    });
+  }
+
+  function play(){
+    var rec = clips[cur().key];
+    if(!rec || !ctx) return;
+    var b = ctx.createBuffer(1, rec.pcm.length, rec.rate);
+    b.copyToChannel ? b.copyToChannel(rec.pcm, 0) : b.getChannelData(0).set(rec.pcm);
+    var s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start();
+  }
+
+  function step(d){
+    idx = Math.min(PHRASES.length - 1, Math.max(0, idx + d));
+    render();
+  }
+
+  /* ── Кнопки ─────────────────────────────────────────── */
+  $("micBtn").addEventListener("click", initMic);
+  $("recBtn").addEventListener("click", function(){ recording ? stopRec() : startRec(); });
+  $("playBtn").addEventListener("click", play);
+  $("nextBtn").addEventListener("click", function(){ step(1); });
+  $("prevBtn").addEventListener("click", function(){ step(-1); });
+
+  document.querySelectorAll(".filters button").forEach(function(b){
+    b.addEventListener("click", function(){
+      document.querySelectorAll(".filters button").forEach(function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      filter = b.dataset.filter;
+      renderList();
+    });
+  });
+
+  document.addEventListener("keydown", function(e){
+    if(e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if(e.code === "Space"){ e.preventDefault(); if(ctx) recording ? stopRec() : startRec(); }
+    else if(e.key === "Enter"){ e.preventDefault(); step(1); }
+    else if(e.key === "p" || e.key === "P" || e.key === "з" || e.key === "З"){ e.preventDefault(); play(); }
+  });
+
+  $("exportBtn").addEventListener("click", async function(){
+    var keys = Object.keys(clips);
+    if(!keys.length){ $("tip").textContent = "Пока нечего выгружать."; return; }
+    $("exportBtn").disabled = true;
+    var zip = new JSZip();
+    for(var i = 0; i < keys.length; i++){
+      $("exportBtn").textContent = "Обрабатываю " + (i + 1) + " из " + keys.length + "…";
+      var done = await processClip(clips[keys[i]]);
+      zip.file(keys[i] + ".mp3", encodeMp3(done.pcm, done.rate));
+    }
+    zip.file("manifest.json", JSON.stringify({keys:keys, recorded:new Date().toISOString()}, null, 2));
+    $("exportBtn").textContent = "Собираю архив…";
+    var blob = await zip.generateAsync({type:"blob"});
+    download(blob, "voice.zip");
+    $("exportBtn").textContent = "Скачать всё одним архивом";
+    $("exportBtn").disabled = false;
+    $("tip").textContent = "Готово: " + keys.length + " фраз. Передайте voice.zip разработчику.";
+  });
+
+  $("exportRawBtn").addEventListener("click", async function(){
+    var keys = Object.keys(clips);
+    if(!keys.length) return;
+    var zip = new JSZip();
+    keys.forEach(function(k){ zip.file(k + ".wav", encodeWav(clips[k].pcm, clips[k].rate)); });
+    download(await zip.generateAsync({type:"blob"}), "voice-raw.zip");
+  });
+
+  $("clearBtn").addEventListener("click", function(){
+    if(!confirm("Удалить все записанные фразы? Отменить это нельзя.")) return;
+    Object.keys(clips).forEach(dbDel);
+    clips = {};
+    render();
+  });
+
+  openDB().then(dbAll).then(function(saved){
+    clips = saved || {};
+    var keys = Object.keys(clips);
+    if(keys.length) $("tip").textContent = "Восстановлено из прошлой сессии: " + keys.length + " фраз.";
+    // встать на первую незаписанную
+    for(var i = 0; i < PHRASES.length; i++){ if(!clips[PHRASES[i].key]){ idx = i; break; } }
+    render();
+  });
+})();
+</script>
+</body>
+</html>
