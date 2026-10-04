@@ -316,15 +316,67 @@
     render();
   }
 
+  /* Из записи оставляем только сам голос.
+     На первых же записях видно: нажатие кнопки или клавиши даёт в начале
+     два широкополосных щелчка, потом секунду тишины, и только потом слово.
+     Щелчок бывает громче голоса, поэтому подрезкой краёв по уровню его не
+     убрать — он сам выглядит как начало речи. Поэтому ищем связные участки
+     звука и оставляем тот, где больше всего энергии: у слова её много,
+     у щелчка почти нет, как бы громко он ни пикнул. */
+  function speechSpan(pcm, rate){
+    var w = Math.max(1, Math.floor(rate * 0.01)), env = [], i, j, s;
+    for(i = 0; i + w <= pcm.length; i += w){
+      s = 0;
+      for(j = 0; j < w; j++) s += pcm[i + j] * pcm[i + j];
+      env.push(Math.sqrt(s / w));
+    }
+    if(!env.length) return {start:0, end:pcm.length - 1, dropped:0};
+
+    var sorted = env.slice().sort(function(a, b){ return a - b; });
+    var noise = sorted[Math.floor(sorted.length * 0.2)] || 0;
+    var top = sorted[sorted.length - 1] || 0;
+    var th = Math.max(top * 0.08, noise * 4, 0.0015);
+
+    var runs = [], cur = null, quiet = 0, MERGE = 25;   // паузы короче 250 мс не разрывают слово
+    for(i = 0; i < env.length; i++){
+      if(env[i] >= th){
+        if(!cur){ cur = {a:i, b:i, e:0}; runs.push(cur); }
+        cur.b = i; quiet = 0;
+      } else if(cur){
+        if(++quiet > MERGE) cur = null;
+      }
+    }
+    if(!runs.length) return {start:0, end:pcm.length - 1, dropped:0};
+
+    runs.forEach(function(r){
+      var e = 0;
+      for(var k = r.a; k <= r.b; k++) e += env[k] * env[k];
+      r.e = e;
+    });
+    var best = runs[0];
+    runs.forEach(function(r){ if(r.e > best.e) best = r; });
+
+    var pad = Math.floor(rate * 0.06);
+    return {
+      start: Math.max(0, best.a * w - pad),
+      end: Math.min(pcm.length - 1, best.b * w + w + pad),
+      dropped: runs.length - 1
+    };
+  }
+
   // Замеры вместо слуха: по ним видно тихие, перегруженные и шумные дубли
   function measure(pcm, rate){
+    // меряем само слово, а не щелчок перед ним: иначе плашки показывают
+    // громкость нажатой кнопки и пугают зря
+    var span = speechSpan(pcm, rate);
+    var word = pcm.subarray(span.start, span.end + 1);
     var peak = 0, sum = 0, i;
-    for(i = 0; i < pcm.length; i++){
-      var v = Math.abs(pcm[i]);
+    for(i = 0; i < word.length; i++){
+      var v = Math.abs(word[i]);
       if(v > peak) peak = v;
-      sum += pcm[i] * pcm[i];
+      sum += word[i] * word[i];
     }
-    var rms = Math.sqrt(sum / Math.max(1, pcm.length));
+    var rms = Math.sqrt(sum / Math.max(1, word.length));
     // шум — самый тихий участок в сто миллисекунд
     var win = Math.max(1, Math.floor(rate * 0.1)), noise = 1;
     for(i = 0; i + win <= pcm.length; i += win){
@@ -334,7 +386,8 @@
       if(r < noise) noise = r;
     }
     if(!isFinite(noise)) noise = 0;
-    return {peak:peak, rms:rms, noise:noise, dur:pcm.length / rate};
+    return {peak:peak, rms:rms, noise:noise, dur:(span.end - span.start + 1) / rate,
+            raw:pcm.length / rate, dropped:span.dropped};
   }
 
   var db20 = function(x){ return x > 0 ? Math.round(20 * Math.log10(x)) : -99; };
@@ -367,18 +420,14 @@
       pcm = done.getChannelData(0);
     }catch(e){ /* фильтр не вышел — работаем с сырым */ }
 
-    // подрезка тишины по порогу от пика
-    var peak = 0, i;
-    for(i = 0; i < pcm.length; i++){ var v = Math.abs(pcm[i]); if(v > peak) peak = v; }
-    var th = Math.max(0.008, peak * 0.07);
-    var s = 0, e = pcm.length - 1;
-    while(s < pcm.length && Math.abs(pcm[s]) < th) s++;
-    while(e > s && Math.abs(pcm[e]) < th) e--;
-    var pad = Math.floor(rate * 0.05);
-    s = Math.max(0, s - pad); e = Math.min(pcm.length - 1, e + pad);
-    var out = new Float32Array(pcm.subarray(s, e + 1));
+    // оставляем только само слово: щелчки от кнопки и паузы уходят
+    var span = speechSpan(pcm, rate);
+    var out = new Float32Array(pcm.subarray(span.start, span.end + 1));
 
-    // нормализация: все реплики одной громкости, иначе в игре слышны скачки
+    // нормализация считается ПОСЛЕ обрезки, иначе громкость задаёт щелчок,
+    // а слово остаётся тихим
+    var peak = 0, i;
+    for(i = 0; i < out.length; i++){ var v = Math.abs(out[i]); if(v > peak) peak = v; }
     var g = peak > 0 ? 0.89 / peak : 1;
     for(i = 0; i < out.length; i++) out[i] *= g;
 
@@ -645,6 +694,12 @@
         el.textContent = pair[0] + ": " + pair[1];
         b.appendChild(el);
       });
+      if(rec.dropped){
+        var cut = document.createElement("span");
+        cut.className = "badge";
+        cut.textContent = "лишнее в начале убрано";
+        b.appendChild(cut);
+      }
       var verdict = document.createElement("span");
       verdict.className = "badge " + (probs.length ? "bad" : "good");
       verdict.textContent = probs.length ? probs.join(", ") : "в порядке";
