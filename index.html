@@ -504,6 +504,14 @@
       </div>
     </div>
 
+    <div class="group">
+      <p class="lbl">Проверка звука</p>
+      <div class="segs">
+        <button class="seg" id="sndTest"><strong>Проверить звук</strong><span>Должны прозвучать короткий писк, лай собаки и голос. Если тихо — смотрите, что показано ниже.</span></button>
+      </div>
+      <p class="fbNote" id="sndDiag">На iPad звук чаще всего глушит беззвучный режим: откройте Пункт управления и проверьте колокольчик. Видео и музыка при этом играют, а игра молчит.</p>
+    </div>
+
     <div class="group"><button class="dangerBtn" id="resetBtn">Начать коллекцию заново</button></div>
 
     <p class="note"><strong>Это прототип петли, а не готовая игра.</strong> Предметы — временные эмодзи вместо настоящих 2D-ассетов, голос — синтез речи браузера вместо живой актрисы. Проверяем здесь одно: понимает ли ребёнок, что от него хотят, и возвращается ли он к коробке. Родительский вход открывается удержанием шестерёнки — пример защиты от случайного нажатия.</p>
@@ -675,13 +683,45 @@
 
   /* ── Audio: tiny synth so the prototype needs no files ── */
   var actx = null;
+
+  /* Звук на iPad молчит по трём причинам, и все три лечатся здесь.
+
+     Первая и самая частая: переключатель «без звука». Он глушит Web Audio,
+     хотя видео и музыка в это время играют, поэтому родитель уверен, что со
+     звуком на планшете всё в порядке. Safari с версии 16.4 даёт это обойти:
+     audioSession.type = "playback" объявляет, что мы проигрыватель, а не
+     интерфейсный «пик», и беззвучный режим нас больше не касается.
+
+     Вторая: контекст рождается остановленным и запускается только внутри
+     касания. Разбудить его разовым «пустым» звуком надёжнее, чем просто
+     вызвать resume.
+
+     Третья: контекст засыпает снова — после звонка, переключения вкладки
+     или блокировки экрана. Поэтому будим его на каждом касании и при
+     возвращении на страницу. */
   function ac(){
     try{
-      if(!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-      if(actx.state === "suspended") actx.resume();
+      if(!actx){
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        try{ if(navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){}
+        try{
+          var b = actx.createBuffer(1, 1, 22050);
+          var s = actx.createBufferSource();
+          s.buffer = b; s.connect(actx.destination); s.start(0);
+        }catch(e){}
+      }
+      if(actx.state !== "running") actx.resume();
       return actx;
     }catch(e){ return null; }
   }
+  // Пробуждение должно случиться в самом касании, а не в отложенном коде,
+  // иначе iOS его не засчитает. Отсюда отдельный слушатель на перехвате.
+  document.addEventListener("pointerdown", function(){
+    if(actx && actx.state !== "running") { try{ actx.resume(); }catch(e){} }
+  }, true);
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden && actx && actx.state !== "running") { try{ actx.resume(); }catch(e){} }
+  });
   function tone(freq, start, dur, type, vol){
     var c = ac(); if(!c) return;
     var o = c.createOscillator(), g = c.createGain();
@@ -1123,20 +1163,67 @@
     heli: {offset:6, dur:2.7, gain:0.5, rateFrom:0.72, rateOver:1}
   };
 
-  var sfxBuffers = {}, sfxAsked = {};
+  var sfxBuffers = {}, sfxAsked = {}, sfxError = "";
 
   function loadSample(id){
     if(sfxAsked[id] || !SFX_FILES[id]) return;
     var c = ac(); if(!c) return;
     sfxAsked[id] = true;
     fetch(SFX_FILES[id])
-      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function(r){ if(!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); })
       .then(function(ab){
         // форма с колбэками — её понимают и старые Safari
         return new Promise(function(res, rej){ c.decodeAudioData(ab, res, rej); });
       })
       .then(function(buf){ sfxBuffers[id] = buf; })
-      .catch(function(){ sfxBuffers[id] = null; });   // не вышло — останется синтез
+      .catch(function(e){
+        sfxBuffers[id] = null;                 // не вышло — пойдём запасным путём
+        if(!sfxError) sfxError = id + ": " + (e && (e.message || e.name) || "не декодировался");
+      });
+  }
+
+  /* Запасной путь: обычный проигрыватель.
+     Safari на iOS разборчив к mp3 в Web Audio и может не декодировать файл,
+     который при этом прекрасно играет тегом audio. Поэтому держим один
+     разблокированный проигрыватель и переключаем ему источник.
+
+     Почему один, а не по штуке на предмет: iOS разрешает воспроизведение
+     только тому элементу, которому хоть раз нажали play внутри касания.
+     Разблокировать тридцать два элемента ради редкого запасного пути — лишнее,
+     а одного хватает: звуки предметов почти не накладываются. */
+  var fallbackAudio = null, fallbackReady = false, fallbackStop = null;
+
+  function unlockFallbackAudio(){
+    try{
+      fallbackAudio = new Audio();
+      fallbackAudio.preload = "auto";
+      // пустой звук внутри касания — этого достаточно, чтобы элемент «ожил»
+      fallbackAudio.src = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTRUoAWgBgkOAGbZHBgG1OF6zM82DWbZaUmMBptgQhGjsyYqc9ae9XFz280948NMBWInljyzsNRFLPWdnZGWrddDsjK1unuSrVN9jJsK8KuQtQCtMBjCEtImISdNKJOopIpBFpNSMbIHCSRpRR5iakjTiyzLhchUUBwCgyKiweBv/7UsQbg8isVNoMPMjAAAA0gAAABEVF1H9AYgDsnTzSFw3KFTIsSgn9eF3MfF9F4YGHCy0DNQ4QOnCsestqtWdl2ZRnJQ5Qm8KQJCgsFrYgoDGVB5SJHHiX1EjvEDEIyFc0jdVKQYpZ8ts/8zd2fX5n0rT7TsLEALEgRiSQwMAJEJCCQTAAAQEAABQAFQAAgAAQAAQAAgCRCQSAAAABOFMWVfQtQBAAAAAAAA==";
+      var p = fallbackAudio.play();
+      if(p && p.then) p.then(function(){ fallbackAudio.pause(); }, function(){});
+      fallbackReady = true;
+    }catch(e){ fallbackReady = false; }
+  }
+
+  function playFallback(id, offset, dur){
+    if(!fallbackReady || !fallbackAudio || !SFX_FILES[id]) return false;
+    try{
+      clearTimeout(fallbackStop);
+      fallbackAudio.pause();
+      if(fallbackAudio.getAttribute("data-id") !== id){
+        fallbackAudio.src = SFX_FILES[id];
+        fallbackAudio.setAttribute("data-id", id);
+      }
+      var go = function(){
+        try{ if(offset) fallbackAudio.currentTime = offset; }catch(e){}
+        var p = fallbackAudio.play();
+        if(p && p.catch) p.catch(function(){});
+        fallbackStop = setTimeout(function(){ try{ fallbackAudio.pause(); }catch(e){} }, (dur || 2.6) * 1000);
+      };
+      if(fallbackAudio.readyState >= 1) go();
+      else fallbackAudio.addEventListener("loadedmetadata", go, {once:true});
+      return true;
+    }catch(e){ return false; }
   }
 
   function playSample(id, offset, dur, opts){
@@ -1172,6 +1259,8 @@
     var o = SFX_OPTS[item.id] || {};
     if(playSample(item.id, o.offset, o.dur, o)) return;
     loadSample(item.id);                       // не успел загрузиться — к следующему разу успеет
+    // Web Audio не смог — пробуем обычным проигрывателем
+    if(sfxBuffers[item.id] === null && playFallback(item.id, o.offset, o.dur)) return;
     if(item.id === "heli") rotor(2.7);         // у вертолёта есть синтезированный запасной
   }
 
@@ -1428,6 +1517,31 @@
   document.querySelectorAll("#cueSegs .seg").forEach(function(b){
     b.addEventListener("click", function(){ S.cue = b.dataset.cue; save(); syncSegs(); });
   });
+  $("sndTest").addEventListener("click", function(){
+    var c = ac();
+    var diag = $("sndDiag");
+    if(!c){ diag.className = "fbNote err"; diag.textContent = "Звуковой движок не создался — браузер не поддерживает Web Audio."; return; }
+    diag.className = "fbNote";
+    diag.textContent = "Проверяю…";
+    tone(880, 0, 0.35, "triangle", 0.25);
+    loadSample("dog");
+    say("Проверка звука", 2);
+    setTimeout(function(){
+      var played = playSample("dog", 0, 1.6, {gain:0.7});
+      var viaFallback = played ? false : playFallback("dog", 0, 1.6);
+      var loaded = Object.keys(sfxBuffers).filter(function(k){ return sfxBuffers[k]; }).length;
+      var v = ruVoice();
+      diag.textContent =
+        "Движок: " + c.state +
+        " · записей загружено: " + loaded +
+        " · лай: " + (played ? "проиграл" : viaFallback ? "проиграл запасным путём" : "не вышло") +
+        " · запасной путь: " + (fallbackReady ? "готов" : "нет") +
+        " · русский голос: " + (v ? v.name : "не найден") +
+        (sfxError ? " · ошибка записи: " + sfxError : "") +
+        (c.state === "running" ? ". Если движок работает, а слышно ничего — это беззвучный режим iPad." : "");
+    }, 1200);
+  });
+
   $("resetBtn").addEventListener("click", function(){
     S.collected = STARTER.slice(); save(); startChooser(); syncShelfNum(); syncSegs();
   });
@@ -1441,7 +1555,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-13";
+  var VERSION = "proto-14";
 
   function deviceLine(){
     var ua = navigator.userAgent;
@@ -1520,6 +1634,7 @@
   $("startBtn").addEventListener("click", function(){
     ac();
     unlockSpeech();
+    unlockFallbackAudio();   // внутри касания, иначе iOS потом не разрешит
     startScr.hidden = true;
     buildRound();
   });
