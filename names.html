@@ -190,6 +190,11 @@
         alt.innerHTML = '<input type="radio" name="r_' + it.id + '" value="alt"> заменить на';
         var field = document.createElement("input");
         field.type = "text";
+        // Без этого браузер подставляет в поля свои сохранённые значения:
+        // «Кот» молча становится «Кошка», и уедет не то, что выбрали.
+        field.autocomplete = "off";
+        field.spellcheck = false;
+        field.name = "nm_" + it.id + "_" + Math.random().toString(36).slice(2, 8);
         field.value = it.alt;
         alt.appendChild(field);
 
