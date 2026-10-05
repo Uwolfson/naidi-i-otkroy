@@ -250,7 +250,19 @@
     await listMics();
     var track = stream.getAudioTracks()[0];
     var name = track && track.label ? track.label : "микрофон";
-    $("micNow").textContent = "Пишем через: " + name;
+    var set = track && track.getSettings ? track.getSettings() : {};
+    /* Беззвучная ловушка блютуса: как только включается микрофон, гарнитура
+       уходит в телефонный режим — полоса режется примерно до 4 кГц, уровень
+       падает. Настройками это не лечится, так устроен протокол, поэтому
+       предупреждаем прямо и громко. */
+    var phoneMode = (set.sampleRate && set.sampleRate <= 24000) ||
+                    /bluetooth|hands.?free|головн/i.test(name);
+    $("micNow").innerHTML = "Пишем через: " + name +
+      (set.sampleRate ? " · " + Math.round(set.sampleRate / 1000) + " кГц" : "");
+    if(phoneMode){
+      $("micNow").innerHTML += '<br><span class="err">Это телефонный режим блютуса: звук узкий и тихий. ' +
+        'Возьмите проводную гарнитуру или запишите с телефона — наушники для записи не нужны совсем.</span>';
+    }
     if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
     if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
     srcNode = ctx.createMediaStreamSource(stream);
@@ -345,7 +357,11 @@
     var sorted = env.slice().sort(function(a, b){ return a - b; });
     var noise = sorted[Math.floor(sorted.length * 0.2)] || 0;
     var top = sorted[sorted.length - 1] || 0;
-    var th = Math.max(top * 0.08, noise * 4, 0.0015);
+    /* Порог считаем от громкости слова, а шум — только нижняя граница,
+       и ограниченная. Иначе на тихой записи (а на телефонном режиме
+       блютуса голос идёт около −33 дБ) порог от шума оказывался выше
+       безударных слогов, и «Яблоко» обрезалось до «блок». */
+    var th = Math.max(top * 0.06, Math.min(noise * 3, top * 0.25), 0.0012);
 
     var runs = [], cur = null, quiet = 0, MERGE = 25;   // паузы короче 250 мс не разрывают слово
     for(i = 0; i < env.length; i++){
@@ -406,10 +422,14 @@
     var out = [];
     if(!rec) return out;
     if(rec.peak >= 0.985) out.push("перегруз");
-    // −26 дБ: ниже этого подъём громкости при выгрузке потянет за собой
-    // и шум. Выше — запись рабочая, даже если на слух кажется тихой.
-    if(rec.peak < 0.05) out.push("очень тихо");
-    if(rec.noise > 0.012) out.push("шумно");
+    /* Решает не абсолютная громкость, а запас между голосом и шумом.
+       При выгрузке громкость поднимается до общей, и шум поднимается
+       вместе с ней ровно настолько же: при запасе в 26 дБ он окажется
+       на −26 дБ и будет слышен позади голоса, при 45 дБ — нет.
+       Поэтому тихая, но чистая запись годится, а громкая и шумная — нет. */
+    var snr = db20(rec.peak) - db20(rec.noise);
+    if(rec.peak < 0.03) out.push("очень тихо");
+    else if(snr < 34) out.push("шум будет слышен");
     if(rec.dur > 4) out.push("длинно");
     return out;
   }
@@ -700,7 +720,8 @@
       var probs = problems(rec);
       [["длительность", rec.dur.toFixed(2) + " с"],
        ["громкость", db20(rec.peak) + " dB"],
-       ["шум", db20(rec.noise) + " dB"]].forEach(function(pair){
+       ["шум", db20(rec.noise) + " dB"],
+       ["запас", (db20(rec.peak) - db20(rec.noise)) + " dB"]].forEach(function(pair){
         var el = document.createElement("span");
         el.className = "badge";
         el.textContent = pair[0] + ": " + pair[1];
