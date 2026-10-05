@@ -136,7 +136,7 @@
     animation:enter .5s cubic-bezier(.2,1.5,.4,1) backwards;
   }
   .item .art{
-    font-size:clamp(84px,17vmin,170px);
+    font-size:clamp(96px,20vmin,200px);
     line-height:1;
     display:block;
     filter:saturate(.92) contrast(1.06) drop-shadow(0 7px 7px rgba(70,52,26,.3));
@@ -386,6 +386,14 @@
   }
   .cell.locked{background:#F1EADB;box-shadow:none;filter:grayscale(1) opacity(.22);}
   .cell .art{display:block;}
+  /* Размер картинке задаёт font-size родителя — ровно так же, как раньше
+     задавал размер эмодзи. Поэтому вся вёрстка и все анимации остались
+     прежними: двигается и дёргается сам .art, а картинка едет внутри. */
+  /* Квадратная коробка со вписыванием: у эмодзи содержимое заполняло весь
+     кегль, а у фотографии машинка широкая, лошадь высокая. Contain даёт
+     каждой занять свою сторону целиком, а не ужаться по меньшей. */
+  .art img,#revealArt img{width:1.28em;height:1.28em;object-fit:contain;
+    display:block;margin:0 auto;-webkit-user-drag:none;user-select:none;}
   .shelfCount{font-family:"Baloo 2",sans-serif;font-size:clamp(20px,3.4vmin,28px);color:var(--amber-deep);font-variant-numeric:tabular-nums;}
 
   /* ─── Settings ──────────────────────────────────────── */
@@ -430,6 +438,7 @@
   .lrow{display:grid;grid-template-columns:38px 1fr auto;gap:12px;align-items:center;
     background:#fff;border-radius:12px;padding:9px 13px;margin-bottom:6px;}
   .lrow .a{font-size:26px;line-height:1;}
+  .lrow .a img{width:1.4em;height:1.4em;object-fit:contain;display:block;}
   .lrow .n{display:block;font-size:15.5px;font-weight:600;}
   .lrow .bar{display:block;height:7px;border-radius:99px;background:var(--paper-edge);margin-top:5px;overflow:hidden;}
   .lrow .bar i{display:block;height:100%;background:var(--sage);}
@@ -1193,11 +1202,24 @@
     if(voiceHave && Object.keys(voiceHave).length) return true;   // есть записи
     return !!window.speechSynthesis && !voiceFailed && !!ruVoice();
   }
+  /* Фотография вместо эмодзи. Файла нет или не загрузился — остаётся
+     эмодзи: игра не должна рассыпаться из-за одной картинки. */
+  var ART_VER = "4";
+  function setArt(el, item){
+    el.textContent = "";
+    var img = document.createElement("img");
+    img.alt = ""; img.draggable = false;
+    img.setAttribute("aria-hidden", "true");
+    img.addEventListener("error", function(){ el.textContent = item.art; });
+    img.src = "art/" + item.id + ".png?v=" + ART_VER;
+    el.appendChild(img);
+  }
+
   function showCue(item){
     var on = S.cue === "always" || !voiceLikelyWorks();
     cue.hidden = !on;
     if(!on) return;
-    cueArt.textContent = item.art;
+    setArt(cueArt, item);
     cue.style.animation = "none"; void cue.offsetWidth; cue.style.animation = "";
   }
   function hideCue(){ cue.hidden = true; }
@@ -1311,7 +1333,7 @@
       var art = document.createElement("span");
       art.className = "art";
       art.style.fontSize = Math.round(L.size * 0.64) + "px";
-      art.textContent = item.art;
+      setArt(art, item);
       b.appendChild(art);
       onTap(b, onChoose);
       chooser.appendChild(b);
@@ -1405,7 +1427,7 @@
       loadSample(item.id);
       var art = document.createElement("span");
       art.className = "art";
-      art.textContent = item.art;
+      setArt(art, item);
       b.appendChild(art);
       onTap(b, onPick);
       stage.appendChild(b);
@@ -1735,7 +1757,7 @@
     if(!item){ buildRound(); return; }
     loadSample(item.id);
     revealItem = item; revealBusy = false;
-    revealArt.textContent = item.art;
+    setArt(revealArt, item);
     revealArt.className = "";
     void revealArt.offsetWidth;
     revealArt.style.animation = "";
@@ -1811,7 +1833,7 @@
       var cell = document.createElement(owned ? "button" : "div");
       cell.className = "cell" + (owned ? "" : " locked");
       var art = document.createElement("span");
-      art.className = "art"; art.textContent = item.art;
+      art.className = "art"; setArt(art, item);
       cell.appendChild(art);
       if(owned){
         cell.setAttribute("aria-label", item.name);
@@ -1972,7 +1994,8 @@
         row.className = "lrow";
         row.innerHTML = '<span class="a"></span><span><span class="n"></span>' +
                         '<span class="bar"><i></i></span></span><span class="v"></span>';
-        row.querySelector(".a").textContent = item ? item.art : "•";
+        if(item) setArt(row.querySelector(".a"), item);
+        else row.querySelector(".a").textContent = "•";
         row.querySelector(".n").textContent = item ? item.name : id;
         row.querySelector(".bar i").style.width = Math.round(rate(id) * 100) + "%";
         row.querySelector(".v").textContent = it.firstTry + " из " + it.asked;
@@ -2073,7 +2096,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-19";
+  var VERSION = "proto-20";
 
   function deviceLine(){
     var ua = navigator.userAgent;
