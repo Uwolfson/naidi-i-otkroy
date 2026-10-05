@@ -275,13 +275,23 @@
     return true;
   }
 
+  /* Полоска в децибелах, а не в долях сигнала.
+     По долям нормальный голос в −18 дБ рисуется жалкой полоской в
+     семнадцать процентов и выглядит «очень тихим», хотя он в порядке.
+     Шкала от −54 дБ до нуля показывает картину так, как её слышно. */
+  function dbPct(x){
+    if(!(x > 0)) return 0;
+    var d = 20 * Math.log10(x);
+    return Math.max(0, Math.min(100, (d + 54) / 54 * 100));
+  }
+
   function drawMeter(){
-    var pct = Math.min(100, liveLevel * 140);
-    $("meterBar").style.width = pct + "%";
+    $("meterBar").style.width = dbPct(liveLevel) + "%";
     if(recording){
+      var d = liveLevel > 0 ? Math.round(20 * Math.log10(liveLevel)) : -99;
       $("meterNote").textContent = liveLevel > 0.98 ? "Перегрузка — отодвиньтесь от микрофона"
-        : liveLevel < 0.05 ? "Очень тихо — говорите ближе"
-        : "Идёт запись";
+        : liveLevel < 0.05 ? "Тихо: " + d + " dB. Хорошо около −12 dB — поднимите уровень микрофона в настройках Windows"
+        : "Идёт запись · " + d + " dB";
     }
     rafId = requestAnimationFrame(drawMeter);
   }
@@ -396,7 +406,9 @@
     var out = [];
     if(!rec) return out;
     if(rec.peak >= 0.985) out.push("перегруз");
-    if(rec.peak < 0.08) out.push("очень тихо");
+    // −26 дБ: ниже этого подъём громкости при выгрузке потянет за собой
+    // и шум. Выше — запись рабочая, даже если на слух кажется тихой.
+    if(rec.peak < 0.05) out.push("очень тихо");
     if(rec.noise > 0.012) out.push("шумно");
     if(rec.dur > 4) out.push("длинно");
     return out;
