@@ -415,6 +415,31 @@
   .fbNote{font-size:13.5px;color:var(--ink-soft);margin:0;line-height:1.5;}
   .fbNote.ok{color:var(--sage);font-weight:700;}
   .fbNote.err{color:#9A4B4B;font-weight:700;}
+  /* ─── Экран «Что узнал ребёнок» ─────────────────────
+     Родитель читает его не как отчёт, а как ответ на вопрос «не зря ли
+     он сидит с планшетом». Поэтому сначала крупные цифры, потом разбор
+     по словам, и всё словами, а не процентами. */
+  #learnedBody{max-width:720px;margin:0 auto;}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:22px;}
+  .tile{background:#fff;border-radius:var(--r-md);padding:14px 16px;box-shadow:0 2px 0 var(--paper-edge);}
+  .tile b{display:block;font-family:"Baloo 2",sans-serif;font-size:30px;line-height:1.1;color:var(--amber-deep);
+    font-variant-numeric:tabular-nums;}
+  .tile span{font-size:13px;color:var(--ink-soft);}
+  .grp{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-soft);margin:22px 0 8px;}
+  .lrow{display:grid;grid-template-columns:38px 1fr auto;gap:12px;align-items:center;
+    background:#fff;border-radius:12px;padding:9px 13px;margin-bottom:6px;}
+  .lrow .a{font-size:26px;line-height:1;}
+  .lrow .n{font-size:15.5px;font-weight:600;}
+  .lrow .bar{height:7px;border-radius:99px;background:var(--paper-edge);margin-top:5px;overflow:hidden;}
+  .lrow .bar i{display:block;height:100%;background:var(--sage);}
+  .lrow .v{font-size:13px;color:var(--ink-soft);white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .plain{background:#fff;border-radius:12px;padding:13px 16px;font-size:14.5px;line-height:1.6;margin-bottom:6px;}
+  .plain b{font-weight:600;}
+  .sessline{display:flex;justify-content:space-between;gap:12px;font-size:14px;color:var(--ink-soft);
+    padding:7px 2px;border-bottom:1px solid var(--paper-edge);}
+  .sessline:last-child{border-bottom:0;}
+
   .vol{display:grid;gap:4px;}
   .vol label{display:flex;justify-content:space-between;align-items:baseline;
     font-size:14.5px;color:var(--ink-soft);margin-top:8px;}
@@ -491,6 +516,14 @@
     <div id="shelfGrid"></div>
   </section>
 
+  <section class="sheet" id="learned" hidden>
+    <div class="sheetHead">
+      <h2>Что узнал ребёнок</h2>
+      <button class="closeBtn" data-close="learned">Назад</button>
+    </div>
+    <div id="learnedBody"></div>
+  </section>
+
   <section class="sheet" id="settings" hidden>
     <div class="sheetHead">
       <h2>Для родителей</h2>
@@ -556,7 +589,10 @@
     <div class="group">
       <p class="lbl">Что видно по игре</p>
       <p class="fbNote" id="jView">Пока нечего показать: ребёнок ещё не играл.</p>
-      <div class="segs"><button class="seg" id="jDump"><strong>Скачать журнал</strong><span>Файлом, для разбора. Хранится только на этом устройстве.</span></button></div>
+      <div class="segs">
+        <button class="seg" id="jOpen"><strong>Открыть разбор</strong><span>Что узнаёт, что путает, к чему тянется первым.</span></button>
+        <button class="seg" id="jDump"><strong>Скачать журнал</strong><span>Файлом, для разбора. Хранится только на этом устройстве.</span></button>
+      </div>
     </div>
 
     <div class="group">
@@ -862,7 +898,7 @@
       boxTip = $("boxTip"), pips = $("pips"), revealLayer = $("revealLayer"),
       revealArt = $("revealArt"), revealName = $("revealName"), revealHint = $("revealHint"),
       chooser = $("chooser"), cue = $("cue"), cueArt = $("cueArt"), hand = $("hand"),
-      shelf = $("shelf"), shelfGrid = $("shelfGrid"), shelfNum = $("shelfNum"),
+      shelf = $("shelf"), learned = $("learned"), shelfGrid = $("shelfGrid"), shelfNum = $("shelfNum"),
       shelfCount = $("shelfCount"), settings = $("settings"), startScr = $("start");
 
   /* ── Audio: tiny synth so the prototype needs no files ── */
@@ -1799,6 +1835,9 @@
   document.querySelectorAll("[data-close]").forEach(function(b){
     b.addEventListener("click", function(){
       $(b.dataset.close).hidden = true;
+      // разбор открывается из настроек — туда и возвращаемся,
+      // а не выбрасываем родителя обратно в игру
+      if(b.dataset.close === "learned"){ showJournal(); settings.hidden = false; return; }
       buildRound();
     });
   });
@@ -1870,6 +1909,110 @@
     }
   });
 
+  /* Экран для родителя. Главный смысл — не цифры, а ответ на вопрос
+     «он чему-то научился?». Поэтому слова, а не проценты, и отдельно
+     вынесено то, что ребёнок путает: это и есть место, где он сейчас
+     учится, а не ошибается. */
+  function buildLearned(){
+    var box = $("learnedBody");
+    box.textContent = "";
+    var s = jSummary();
+
+    if(!s.sessions){
+      var empty = document.createElement("p");
+      empty.className = "plain";
+      empty.textContent = "Ребёнок ещё не играл — показывать нечего. Загляните сюда после первой игры.";
+      box.appendChild(empty);
+      return;
+    }
+
+    var tiles = document.createElement("div");
+    tiles.className = "tiles";
+    [[s.sessions, "раз играл"], [s.minutes, "минут всего"],
+     [s.rounds, "вопросов"], [s.boxes, "коробок открыл"]].forEach(function(p){
+      var t = document.createElement("div");
+      t.className = "tile";
+      t.innerHTML = "<b></b><span></span>";
+      t.querySelector("b").textContent = p[0];
+      t.querySelector("span").textContent = p[1];
+      tiles.appendChild(t);
+    });
+    box.appendChild(tiles);
+
+    function title(text){
+      var h = document.createElement("div");
+      h.className = "grp"; h.textContent = text;
+      box.appendChild(h);
+    }
+    function plain(html){
+      var p = document.createElement("p");
+      p.className = "plain"; p.innerHTML = html;
+      box.appendChild(p);
+    }
+
+    // разбор по словам: сначала то, что уже получается
+    var asked = Object.keys(J.items).filter(function(id){ return J.items[id].asked > 0; });
+    var rate = function(id){ var i = J.items[id]; return i.asked ? i.firstTry / i.asked : 0; };
+    asked.sort(function(a, b){ return rate(b) - rate(a); });
+
+    var groups = [
+      ["Узнаёт уверенно", function(id){ return J.items[id].asked >= 3 && rate(id) >= 0.7; }],
+      ["Учится", function(id){ return J.items[id].asked >= 3 && rate(id) >= 0.4 && rate(id) < 0.7; }],
+      ["Пока трудно", function(id){ return J.items[id].asked >= 3 && rate(id) < 0.4; }],
+      ["Спрашивали мало — рано судить", function(id){ return J.items[id].asked < 3; }]
+    ];
+
+    groups.forEach(function(g){
+      var list = asked.filter(g[1]);
+      if(!list.length) return;
+      title(g[0]);
+      list.forEach(function(id){
+        var it = J.items[id], item = BY_ID[id];
+        var row = document.createElement("div");
+        row.className = "lrow";
+        row.innerHTML = '<span class="a"></span><span><span class="n"></span>' +
+                        '<span class="bar"><i></i></span></span><span class="v"></span>';
+        row.querySelector(".a").textContent = item ? item.art : "•";
+        row.querySelector(".n").textContent = item ? item.name : id;
+        row.querySelector(".bar i").style.width = Math.round(rate(id) * 100) + "%";
+        row.querySelector(".v").textContent = it.firstTry + " из " + it.asked;
+        box.appendChild(row);
+      });
+    });
+
+    if(s.favourite.length){
+      title("Любимое");
+      plain("Из всего, что лежит на экране, ребёнок первым тянется к этому: <b>" +
+            s.favourite.join(", ") + "</b>. Это его собственный выбор, игра его не подсказывает.");
+    }
+
+    if(s.confused.length){
+      title("Путает");
+      plain("Здесь он сейчас и учится — это не ошибки, а место, где слова ещё не разошлись:<br><b>" +
+            s.confused.join("</b><br><b>") + "</b>");
+    }
+
+    title("Когда играл");
+    var sess = document.createElement("div");
+    sess.className = "plain";
+    J.sessions.slice().reverse().slice(0, 8).forEach(function(x){
+      var d = new Date(x.start);
+      var line = document.createElement("div");
+      line.className = "sessline";
+      var when = d.toLocaleDateString("ru-RU", {day:"numeric", month:"long"}) + ", " +
+                 d.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+      var mins = Math.max(1, Math.round(x.ms / 60000));
+      line.innerHTML = "<span></span><span></span>";
+      line.children[0].textContent = when;
+      line.children[1].textContent = mins + " мин · вопросов " + x.rounds + " · коробок " + x.boxes;
+      sess.appendChild(line);
+    });
+    box.appendChild(sess);
+
+    plain("Всё это хранится только на этом устройстве и никуда не отправляется. " +
+          "Наружу уходит лишь то, что вы сами приложите к отзыву.");
+  }
+
   function showJournal(){
     var s = jSummary(), el = $("jView");
     if(!s.sessions){ el.textContent = "Пока нечего показать: ребёнок ещё не играл."; return; }
@@ -1880,6 +2023,8 @@
     if(s.confused.length)  L.push("Путает: " + s.confused.join("; "));
     el.textContent = L.join(" · ");
   }
+
+  $("jOpen").addEventListener("click", function(){ buildLearned(); openSheet(learned); });
 
   $("jDump").addEventListener("click", function(){
     var blob = new Blob([JSON.stringify(J, null, 2)], {type:"application/json"});
@@ -1928,7 +2073,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-18";
+  var VERSION = "proto-19";
 
   function deviceLine(){
     var ua = navigator.userAgent;
