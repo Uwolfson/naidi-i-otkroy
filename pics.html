@@ -13,25 +13,33 @@
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--ink);
     font:16px/1.6 "Golos Text","Segoe UI",system-ui,sans-serif;}
-  .wrap{max-width:1180px;margin:0 auto;padding:26px 18px 120px;}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 18px 130px;}
   h1{font-size:25px;margin:0 0 8px;}
   .lead{color:var(--ink-soft);font-size:14.5px;max-width:70ch;margin:0 0 10px;}
   .lead b{color:var(--ink);}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:22px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:22px;}
   .card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:12px;
-    display:grid;gap:8px;}
-  .card.no{opacity:.5;}
+    display:grid;gap:8px;align-content:start;}
+  .card.no{background:#FDF6F4;}
+  .card.todo{box-shadow:inset 0 0 0 2px #EFE2C8;}
   .pic{background:var(--sky);border-radius:10px;height:210px;display:grid;place-items:center;
     overflow:hidden;cursor:zoom-in;}
-  /* на телефоне — одна крупная карточка в ряд, иначе не разглядеть */
-  @media (max-width:560px){
-    .grid{grid-template-columns:1fr;}
-    .pic{height:300px;}
-  }
+  .pic img{max-width:88%;max-height:88%;display:block;}
+  .pic img.m{transform:scaleX(-1);}
+  @media (max-width:560px){ .grid{grid-template-columns:1fr;} .pic{height:300px;} }
 
-  /* Просмотр во весь экран: по картинке видно всё — и обрезку, и ореолы
-     по краю выреза, и настоящую ли прозрачность. В сетке этого не видно. */
+  .nm{font-weight:600;font-size:15.5px;}
+  .dir{font-size:12px;color:var(--ink-faint);margin-top:-4px;}
+  .row{display:flex;gap:6px;flex-wrap:wrap;}
+  button{font:inherit;border:0;border-radius:999px;padding:8px 14px;font-size:13.5px;cursor:pointer;
+    background:#F3F0E8;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule);}
+  button.on{background:var(--teal);color:#fff;box-shadow:none;}
+  button.no.on{background:var(--warn);}
+  textarea.cm{width:100%;min-height:44px;font:inherit;font-size:14px;padding:8px 10px;
+    border-radius:9px;border:1px solid var(--rule);background:#fff;resize:vertical;}
+  textarea.cm:focus{outline:none;border-color:var(--amber);}
+
   #zoom{position:fixed;inset:0;z-index:50;background:rgba(32,28,22,.92);
     display:none;place-items:center;padding:18px;cursor:zoom-out;}
   #zoom.on{display:grid;}
@@ -41,53 +49,42 @@
   #zoom img.m{transform:scaleX(-1);}
   #zoom .cap{position:absolute;left:0;right:0;bottom:22px;text-align:center;color:#fff;
     font-size:16px;text-shadow:0 2px 8px rgba(0,0,0,.6);}
-  .pic img{max-width:88%;max-height:88%;display:block;}
-  .pic img.m{transform:scaleX(-1);}
-  .nm{font-weight:600;font-size:15px;}
-  .row{display:flex;gap:6px;flex-wrap:wrap;}
-  button{font:inherit;border:0;border-radius:999px;padding:7px 13px;font-size:13.5px;cursor:pointer;
-    background:#F3F0E8;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule);}
-  button.on{background:var(--teal);color:#fff;box-shadow:none;}
-  button.no.on{background:var(--warn);}
-  .dir{font-size:12px;color:var(--ink-faint);}
-  .missing{background:#FBEDEA;border-color:#E8C7BF;}
-  .missing .pic{background:#F6E3DF;font-size:40px;}
 
   .foot{position:fixed;left:0;right:0;bottom:0;background:rgba(244,242,236,.96);
     border-top:1px solid var(--rule);backdrop-filter:blur(8px);padding:12px 18px;
     display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
   .primary{background:var(--teal);color:#fff;box-shadow:none;padding:12px 22px;font-size:15px;}
   .tip{font-size:13.5px;color:var(--ink-soft);}
-  textarea{width:100%;min-height:120px;margin-top:14px;font:13px ui-monospace,monospace;
+  textarea#out{width:100%;min-height:150px;margin-top:14px;font:13px ui-monospace,monospace;
     border:1px solid var(--rule);border-radius:10px;padding:12px;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Картинки на утверждение</h1>
-  <p class="lead">Подобрал 31 из 32 на Pixabay по фильтру «прозрачный фон». Лицензия там разрешает коммерческое использование без указания авторства, так что вопрос с правами закрыт. Каждая проверена скриптом: настоящий PNG с прозрачностью, обрезана по содержимому и приведена к квадрату.</p>
-  <p class="lead"><b>Животные переделаны:</b> все двенадцать теперь фотографии, а не рисунки. Поросёнок и корова развёрнуты, чтобы смотреть влево.</p>
-  <p class="lead"><b>Что от вас нужно.</b> По каждой картинке два решения: годится ли она вообще и в ту ли сторону смотрит. Всё, что ездит, бегает и плавает, должно смотреть <b>влево</b> — кнопка «развернуть» зеркалит картинку, и я применю это к файлу. Отметки сохраняются сами, страницу можно закрыть и вернуться.</p>
-  <p class="lead"><b>Звезду нарисовал сам.</b> В стоках по всем запросам попадались только флаги, ёлки и конфетти, а присланная ссылка вела на премиум-вектор в JPEG — без прозрачности и без свободной лицензии. Простую звезду быстрее нарисовать: своя, с настоящей прозрачностью и без вопросов к правам.</p>
+  <p class="lead">Набор из 32 картинок с Pixabay: лицензия разрешает коммерческое использование без указания авторства. Каждая проверена на настоящую прозрачность, обрезана по содержимому и приведена к квадрату. Звезду нарисовал сам — в стоках по всем запросам попадались только флаги и конфетти.</p>
+  <p class="lead"><b>Животные и техника переделаны:</b> теперь везде фотографии, а не рисунки. Исключение одно — ракета: настоящей на прозрачном фоне не нашлось ни по одному запросу, так что стоит рисованная.</p>
+  <p class="lead"><b>Что нужно по каждой картинке.</b> Годится или заменить; в ту ли сторону смотрит — всё, что ездит, бегает и плавает, должно смотреть <b>влево</b>, кнопка «развернуть» зеркалит, и я применю это к файлу; и комментарий, если есть что сказать. Нажмите на картинку, чтобы рассмотреть её целиком.</p>
+  <p class="lead">Отметок изначально нет — ни одна не проставлена за вас. Всё сохраняется само, страницу можно закрыть и вернуться.</p>
 
   <div class="grid" id="grid"></div>
   <textarea id="out" hidden readonly></textarea>
 </div>
 
-<div id="zoom"><img id="zoomImg" alt=""><div class="cap" id="zoomCap"></div>
-</div>
+<div id="zoom"><img id="zoomImg" alt=""><div class="cap" id="zoomCap"></div></div>
 
 <div class="foot">
   <button class="primary" id="save">Собрать решения</button>
+  <button id="reset">Сбросить все отметки</button>
   <span class="tip" id="tip"></span>
 </div>
 
 <script>
 (function(){
   "use strict";
-  /* Направление указано как подсказка, а не как факт: что предмет смотрит
-     не туда, человек видит мгновенно, а по миниатюре это определяется плохо.
-     Поэтому решение о зеркале принимает тот, кто смотрит. */
+  /* Направление — подсказка, а не факт: по миниатюре его определить трудно,
+     а глазами видно мгновенно, поэтому решает тот, кто смотрит.
+     Комментарий важнее самой отметки: «заменить» не говорит, что не так. */
   var ITEMS = [
     ["car","Машинка",1],["bus","Автобус",1],["fire","Пожарная",1],["amb","Скорая",1],
     ["train","Поезд",1],["tractor","Трактор",1],["bike","Велосипед",1],["heli","Вертолёт",1],
@@ -96,106 +93,120 @@
     ["pig","Поросёнок",1],["sheep","Овечка",1],["chick","Курица",1],["duck","Утка",1],
     ["fish","Рыбка",1],["dolphin","Дельфин",1],["crab","Краб",0],["butter","Бабочка",0],
     ["ball","Мячик",0],["bear","Мишка",0],["apple","Яблоко",0],["book","Книжка",0],
-    ["cup","Чашка",0],["lamp","Лампа",0],["flower","Цветок",0],["moon","Луна",0],
-    ["star","Звезда",0]
+    ["cup","Чашка",0],["lamp","Лампа",0],["flower","Цветок",0],["star","Звезда",0],
+    ["moon","Луна",0]
   ];
-  var MISSING = {};
-  var KEY = "naidi-pics-v1";
+  var VER = "3";               // заодно сбрасывает кэш картинок в браузере
+  var KEY = "naidi-pics-v3";   // новый ключ: прежние отметки не подхватятся
   var state = {};
   try{ state = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }catch(e){ state = {}; }
 
+  function marked(){
+    var n = 0;
+    ITEMS.forEach(function(it){ var s = state[it[0]]; if(s && s.ok !== undefined) n++; });
+    return n;
+  }
   function save(){
     try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
-    var n = Object.keys(state).length;
-    document.getElementById("tip").textContent = "Отмечено: " + n + " из " + ITEMS.length;
+    document.getElementById("tip").textContent = "Отмечено: " + marked() + " из " + ITEMS.length;
   }
 
-  var grid = document.getElementById("grid");
-  ITEMS.forEach(function(it){
-    var id = it[0], name = it[1], directional = it[2];
-    var st = state[id] || (state[id] = {ok:!MISSING[id], mirror:false});
+  function build(){
+    var grid = document.getElementById("grid");
+    grid.textContent = "";
+    ITEMS.forEach(function(it){
+      var id = it[0], name = it[1], directional = it[2];
+      var st = state[id] || (state[id] = {});
 
-    var card = document.createElement("div");
-    card.className = "card" + (MISSING[id] ? " missing" : "");
+      var card = document.createElement("div");
+      card.className = "card";
 
-    var pic = document.createElement("div");
-    pic.className = "pic";
-    if(MISSING[id]){ pic.textContent = "нет"; }
-    else {
+      var pic = document.createElement("div");
+      pic.className = "pic";
       var img = document.createElement("img");
-      img.src = "art/" + id + ".png?v=2";
+      img.src = "art/" + id + ".png?v=" + VER;
       img.alt = name;
       pic.appendChild(img);
-    }
       pic.addEventListener("click", function(){
-        if(MISSING[id]) return;
         var z = document.getElementById("zoom"), zi = document.getElementById("zoomImg");
-        zi.src = "art/" + id + ".png?v=2";
+        zi.src = "art/" + id + ".png?v=" + VER;
         zi.classList.toggle("m", !!st.mirror);
         document.getElementById("zoomCap").textContent = name + " — нажмите, чтобы закрыть";
         z.classList.add("on");
       });
-    card.appendChild(pic);
+      card.appendChild(pic);
 
-    var nm = document.createElement("div");
-    nm.className = "nm"; nm.textContent = name;
-    card.appendChild(nm);
+      var nm = document.createElement("div");
+      nm.className = "nm"; nm.textContent = name;
+      card.appendChild(nm);
 
-    var dir = document.createElement("div");
-    dir.className = "dir";
-    dir.textContent = directional ? "должен смотреть влево" : "направление не важно";
-    card.appendChild(dir);
+      var dir = document.createElement("div");
+      dir.className = "dir";
+      dir.textContent = directional ? "должен смотреть влево" : "направление не важно";
+      card.appendChild(dir);
 
-    var row = document.createElement("div");
-    row.className = "row";
+      var row = document.createElement("div");
+      row.className = "row";
+      var bOk = document.createElement("button"); bOk.textContent = "годится";
+      var bNo = document.createElement("button"); bNo.className = "no"; bNo.textContent = "заменить";
+      var bM  = document.createElement("button"); bM.textContent = "развернуть";
+      row.appendChild(bOk); row.appendChild(bNo); row.appendChild(bM);
+      card.appendChild(row);
 
-    var bOk = document.createElement("button");
-    bOk.textContent = "годится";
-    var bNo = document.createElement("button");
-    bNo.className = "no"; bNo.textContent = "заменить";
-    var bM = document.createElement("button");
-    bM.textContent = "развернуть";
+      var cm = document.createElement("textarea");
+      cm.className = "cm";
+      cm.placeholder = "Что не так? Например: смотрит не туда, белая кайма по краю, не похоже на игрушку";
+      cm.value = st.note || "";
+      card.appendChild(cm);
 
-    function paint(){
-      bOk.classList.toggle("on", st.ok);
-      bNo.classList.toggle("on", !st.ok);
-      bM.classList.toggle("on", !!st.mirror);
-      card.classList.toggle("no", !st.ok);
-      var img = pic.querySelector("img");
-      if(img) img.classList.toggle("m", !!st.mirror);
-    }
-    bOk.addEventListener("click", function(){ st.ok = true; save(); paint(); });
-    bNo.addEventListener("click", function(){ st.ok = false; save(); paint(); });
-    bM.addEventListener("click", function(){ st.mirror = !st.mirror; save(); paint(); });
+      function paint(){
+        bOk.classList.toggle("on", st.ok === true);
+        bNo.classList.toggle("on", st.ok === false);
+        bM.classList.toggle("on", !!st.mirror);
+        card.classList.toggle("no", st.ok === false);
+        card.classList.toggle("todo", st.ok === undefined);
+        img.classList.toggle("m", !!st.mirror);
+      }
+      bOk.addEventListener("click", function(){ st.ok = true;  save(); paint(); });
+      bNo.addEventListener("click", function(){ st.ok = false; save(); paint(); });
+      bM.addEventListener("click",  function(){ st.mirror = !st.mirror; save(); paint(); });
+      cm.addEventListener("input",  function(){ st.note = cm.value; save(); });
 
-    row.appendChild(bOk); row.appendChild(bNo);
-    if(!MISSING[id]) row.appendChild(bM);
-    card.appendChild(row);
-    grid.appendChild(card);
-    paint();
-  });
-  save();
+      grid.appendChild(card);
+      paint();
+    });
+    save();
+  }
+  build();
 
-  document.getElementById("zoom").addEventListener("click", function(){
-    this.classList.remove("on");
-  });
+  document.getElementById("zoom").addEventListener("click", function(){ this.classList.remove("on"); });
   document.addEventListener("keydown", function(e){
     if(e.key === "Escape") document.getElementById("zoom").classList.remove("on");
   });
 
+  document.getElementById("reset").addEventListener("click", function(){
+    if(!confirm("Снять все отметки и комментарии?")) return;
+    state = {};
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    build();
+  });
+
   document.getElementById("save").addEventListener("click", function(){
-    var res = {replace:[], mirror:[]};
+    var res = {replace:[], mirror:[], notes:{}, unmarked:[]};
     ITEMS.forEach(function(it){
       var s = state[it[0]] || {};
-      if(!s.ok) res.replace.push(it[0]);
+      if(s.ok === false) res.replace.push(it[0]);
+      if(s.ok === undefined) res.unmarked.push(it[0]);
       if(s.mirror) res.mirror.push(it[0]);
+      if(s.note && s.note.trim()) res.notes[it[0]] = s.note.trim();
     });
     var text = JSON.stringify(res, null, 2);
     var out = document.getElementById("out");
     out.hidden = false; out.value = text; out.select();
     try{ navigator.clipboard.writeText(text); }catch(e){}
     document.getElementById("tip").textContent =
-      "Заменить: " + res.replace.length + ", развернуть: " + res.mirror.length + ". Скопировано.";
+      "Заменить: " + res.replace.length + ", развернуть: " + res.mirror.length +
+      (res.unmarked.length ? ", не отмечено: " + res.unmarked.length : "") + ". Скопировано.";
   });
 })();
 </script>
