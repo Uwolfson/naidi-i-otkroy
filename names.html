@@ -52,6 +52,7 @@
   <p class="lead">Ребёнок учит слово в той форме, в которой его слышит. «Собачка» тёплая, но на улице ему скажут «собака», и это должно быть то же самое слово. При этом часть уменьшительных — обычные названия игрушек, и возвращать их к «взрослой» форме странно: плюшевого медведя все зовут мишкой.</p>
   <p class="lead"><strong>Отметьте, где оставить, а где заменить.</strong> Можно вписать свой вариант. Внизу кнопка — она соберёт решения, их нужно прислать мне.</p>
   <p class="lead" id="recNote"></p>
+  <p class="lead"><strong>Разметка сохраняется сама</strong>, прямо в браузере: страницу можно закрыть и вернуться. Обновления страницы вашу разметку не трогают.</p>
 
   <div id="groups"></div>
 
@@ -61,6 +62,7 @@
 <div class="foot">
   <button class="primary" id="saveBtn">Собрать решения</button>
   <button class="ghost" id="fileBtn">Скачать файлом</button>
+  <button class="ghost" id="resetBtn">Сбросить к предложенному</button>
   <span class="tip" id="tip"></span>
 </div>
 
@@ -120,6 +122,21 @@
 
   var $ = function(id){ return document.getElementById(id); };
   var choice = {};   // id -> итоговое название
+
+  /* Разметка сохраняется сразу, на каждое нажатие.
+     Без этого любая перезагрузка — или моя выкладка новой версии прямо
+     во время работы — возвращала страницу к предложениям по умолчанию,
+     и выглядело это как «всё перезаписалось». */
+  var SAVE_KEY = "naidi-names-v1";
+  var saved = {};
+  try{ saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}") || {}; }catch(e){ saved = {}; }
+
+  function saveChoice(id, mode, text){
+    saved[id] = {mode:mode, text:text};
+    try{ localStorage.setItem(SAVE_KEY, JSON.stringify(saved)); }catch(e){}
+    var n = Object.keys(saved).length;
+    $("tip").textContent = "Сохранено: " + n + " из " + LIST.length;
+  }
 
   // Что уже записано: страница лежит на том же адресе, что и студия,
   // поэтому видит её хранилище. Смена названия = перезапись трёх фраз.
@@ -209,19 +226,28 @@
         row.appendChild(right);
         box.appendChild(row);
 
-        function pick(which){
+        function pick(which, skipSave){
           keep.classList.toggle("on", which === "keep");
           alt.classList.toggle("on", which === "alt");
           keep.querySelector("input").checked = which === "keep";
           alt.querySelector("input").checked = which === "alt";
           choice[it.id] = which === "keep" ? it.now : field.value.trim();
+          if(!skipSave) saveChoice(it.id, which, field.value);
         }
         keep.addEventListener("click", function(){ pick("keep"); });
         alt.addEventListener("click", function(){ pick("alt"); });
         field.addEventListener("input", function(){
-          if(alt.classList.contains("on")) choice[it.id] = field.value.trim();
+          if(alt.classList.contains("on")){
+            choice[it.id] = field.value.trim();
+            saveChoice(it.id, "alt", field.value);
+          }
         });
-        pick(it.mine);
+
+        // Восстанавливаем прошлую разметку. Своё решение всегда сильнее
+        // моего предложения: иначе мои правки страницы стирали бы работу.
+        var was = saved[it.id];
+        if(was && was.text) field.value = was.text;
+        pick(was ? was.mode : it.mine, true);
       });
     });
   }
@@ -246,6 +272,14 @@
     $("tip").textContent = n
       ? "Менять: " + n + ". Скопировано — вставьте мне в чат."
       : "Всё остаётся как есть.";
+  });
+
+  $("resetBtn").addEventListener("click", function(){
+    if(!confirm("Сбросить вашу разметку и вернуть мои предложения?")) return;
+    saved = {};
+    try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+    render();
+    $("tip").textContent = "Вернул предложения по умолчанию.";
   });
 
   $("fileBtn").addEventListener("click", function(){
