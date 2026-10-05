@@ -207,8 +207,7 @@
       if(s.note && s.note.trim()) bits.push("— " + s.note.trim());
       lines.push(bits.join(" "));
     });
-    return n ? lines.join("
-") : "";
+    return n ? lines.join(String.fromCharCode(10)) : "";
   }
 
   document.getElementById("send").addEventListener("click", function(){
