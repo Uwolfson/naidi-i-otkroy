@@ -233,19 +233,51 @@
       });
       var saved = localStorage.getItem(MIC_KEY);
       if(saved && ins.some(function(d){ return d.deviceId === saved; })) sel.value = saved;
-      sel.hidden = ins.length < 2;
+      // Показываем список всегда, как только появились названия: иначе
+      // воткнутую позже гарнитуру не на что переключить.
+      sel.hidden = !ins.length;
     }catch(e){}
+  }
+
+  // Воткнули или выдернули устройство — список обновляем сразу
+  if(navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+    navigator.mediaDevices.addEventListener("devicechange", function(){ listMics(); });
+  }
+
+  // Причин отказа несколько, и лечатся они по-разному, поэтому называем точную
+  function micFailed(e){
+    var n = e && e.name || "";
+    var msg =
+      n === "NotAllowedError"     ? "Доступ к микрофону запрещён. Нажмите на замок в адресной строке и разрешите его для этого сайта." :
+      n === "NotFoundError"       ? "Микрофон не найден. Проверьте, что гарнитура воткнута до конца, и обновите страницу." :
+      n === "NotReadableError"    ? "Микрофон занят другой программой — закройте Zoom, Skype, Telegram и попробуйте снова." :
+      n === "OverconstrainedError"? "Выбранного микрофона больше нет. Обновите страницу — студия возьмёт доступный." :
+                                    "Не удалось включить микрофон" + (n ? " (" + n + ")" : "") + ".";
+    $("curHint").innerHTML = '<span class="err">' + msg + '</span>';
+    return false;
   }
 
   async function initMic(deviceId){
     var want = {channelCount:1, echoCancellation:false, noiseSuppression:false, autoGainControl:false};
     if(deviceId) want.deviceId = {exact:deviceId};
+    if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
     try{
-      if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
       stream = await navigator.mediaDevices.getUserMedia({audio:want});
     }catch(e){
-      $("curHint").innerHTML = '<span class="err">Микрофон не разрешён. Нажмите на значок замка в адресной строке и разрешите доступ.</span>';
-      return false;
+      /* Самая частая беда: сохранён выбор устройства, которого больше нет —
+         отключили блютус, выдернули гарнитуру. Браузер отвечает отказом,
+         и раньше здесь было написано «не разрешён», что уводило в сторону.
+         Теперь сбрасываем выбор и берём любой доступный микрофон. */
+      if(deviceId){
+        localStorage.removeItem(MIC_KEY);
+        delete want.deviceId;
+        try{
+          stream = await navigator.mediaDevices.getUserMedia({audio:want});
+          $("curHint").textContent = "Прежний микрофон исчез, переключился на доступный.";
+        }catch(e2){ return micFailed(e2); }
+      } else {
+        return micFailed(e);
+      }
     }
     await listMics();
     var track = stream.getAudioTracks()[0];
