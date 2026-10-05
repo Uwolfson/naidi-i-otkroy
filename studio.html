@@ -68,6 +68,28 @@
   li .txt{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   li .k{font:11.5px ui-monospace,monospace;color:var(--ink-faint);}
 
+  /* ── Крупный режим ──────────────────────────────────
+     Ноутбук уезжает от микрофона подальше, чтобы не шумел вентилятором,
+     и экран оказывается в паре метров. Значит, с этого расстояния должны
+     читаться три вещи: какую фразу говорить, идёт ли запись и записана ли
+     она уже. Остальное в этот момент только мешает, поэтому прячется. */
+  .big .lead,.big .listHead,.big #list,.big .note,.big .hint,.big .key{display:none;}
+  .big .phrase{font-size:clamp(56px,11vw,170px);line-height:1.05;margin:0 0 18px;}
+  .big .card{padding:30px 26px;}
+  .big button{padding:22px 38px;font-size:24px;border-radius:999px;}
+  .big .rec{min-width:300px;}
+  .big .meter{height:26px;margin:26px 0 10px;}
+  .big .meterNote{font-size:19px;}
+  .big .badges{gap:12px;}
+  .big .badge{font-size:19px;padding:9px 18px;}
+  .big #bigState{display:block;}
+  #bigState{display:none;font-weight:700;letter-spacing:.01em;margin:4px 0 16px;
+    font-size:clamp(34px,5.5vw,76px);line-height:1.1;}
+  #bigState.none{color:var(--ink-faint);}
+  #bigState.ok{color:var(--teal);}
+  #bigState.rec{color:var(--warn);}
+  #bigState.redo{color:var(--amber);}
+
   .foot{position:fixed;left:0;right:0;bottom:0;background:rgba(244,242,236,.95);
     border-top:1px solid var(--rule);padding:10px 18px;backdrop-filter:blur(8px);
     display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
@@ -89,6 +111,7 @@
       <div class="prog"><i id="progBar"></i></div>
     </div>
     <span class="count" id="progText">0 из 0</span>
+    <button class="ghost" id="bigBtn">Крупно</button>
     <button class="ghost" id="micBtn">Включить микрофон</button>
     <select id="micSel" hidden style="font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--surface);max-width:260px"></select>
   </div>
@@ -97,6 +120,7 @@
     <div class="key" id="curKey">—</div>
     <div class="phrase" id="curText">Нажмите «Включить микрофон»</div>
     <p class="hint" id="curHint"></p>
+    <div id="bigState"></div>
 
     <div class="controls">
       <button class="rec" id="recBtn" disabled>● Записать</button>
@@ -143,13 +167,13 @@
      s_* служебные. Порядок — группами, чтобы не прыгать между
      интонациями: сначала все названия, потом все вопросы и так далее. */
   var ITEMS = [
-    ["ball","Мяч"],["bear","Мишка"],["car","Машинка"],["dog","Собачка"],
-    ["apple","Яблоко"],["heli","Вертолёт"],["cat","Котик"],["cow","Корова"],
+    ["ball","Мячик"],["bear","Мишка"],["car","Машинка"],["dog","Собака"],
+    ["apple","Яблоко"],["heli","Вертолёт"],["cat","Кошка"],["cow","Корова"],
     ["bus","Автобус"],["flower","Цветок"],["plane","Самолёт"],["fish","Рыбка"],
-    ["horse","Лошадка"],["duck","Уточка"],["train","Поезд"],["rocket","Ракета"],
-    ["butter","Бабочка"],["bike","Велосипед"],["pig","Свинка"],["sheep","Овечка"],
-    ["fire","Пожарная"],["amb","Скорая"],["boat","Кораблик"],["star","Звёздочка"],
-    ["chick","Курочка"],["tractor","Трактор"],["dolphin","Дельфин"],["crab","Крабик"],
+    ["horse","Лошадь"],["duck","Утка"],["train","Поезд"],["rocket","Ракета"],
+    ["butter","Бабочка"],["bike","Велосипед"],["pig","Поросёнок"],["sheep","Овечка"],
+    ["fire","Пожарная"],["amb","Скорая"],["boat","Кораблик"],["star","Звезда"],
+    ["chick","Курица"],["tractor","Трактор"],["dolphin","Дельфин"],["crab","Краб"],
     ["moon","Луна"],["book","Книжка"],["cup","Чашка"],["lamp","Лампа"]
   ];
   var PRAISE = ["Верно!","Точно!","Правильно!","Да!","Ага!","Есть!","Так и есть!","Вот так!","Получилось!","Да, верно!"];
@@ -346,6 +370,7 @@
     buffers = []; recording = true;
     $("recBtn").textContent = "■ Остановить";
     $("recBtn").classList.add("on");
+    syncBigState();
   }
 
   function stopRec(){
@@ -365,6 +390,7 @@
 
     var rec = measure(pcm, ctx.sampleRate);
     rec.pcm = pcm; rec.rate = ctx.sampleRate;
+    rec.text = cur().text;        // чтобы будущее переименование заметилось само
     clips[cur().key] = rec;
     dbPut(cur().key, rec);
     render();
@@ -449,6 +475,24 @@
   }
 
   var db20 = function(x){ return x > 0 ? Math.round(20 * Math.log10(x)) : -99; };
+
+  /* Что переписать независимо от замеров.
+     Первые четыре писались ещё через блютус, в телефонном режиме.
+     Трём другим поменяли название, и записано там уже не то слово. */
+  var REDO = {
+    n_ball:"писалось через блютус", n_bear:"писалось через блютус",
+    n_car:"писалось через блютус",  n_dog:"писалось через блютус",
+    n_cat:"название изменилось", n_horse:"название изменилось", n_duck:"название изменилось"
+  };
+
+  function redoReason(key, rec){
+    if(REDO[key]) return REDO[key];
+    // у записей, сделанных после этой правки, текст фразы хранится рядом,
+    // поэтому любое будущее переименование заметится само
+    var ph = PHRASES.filter(function(x){ return x.key === key; })[0];
+    if(rec && rec.text && ph && rec.text !== ph.text) return "текст изменился";
+    return null;
+  }
 
   function problems(rec){
     var out = [];
@@ -736,8 +780,20 @@
   /* ── Экран ──────────────────────────────────────────── */
   function cur(){ return PHRASES[idx]; }
 
+  /* Крупная строка состояния: единственное, что должно читаться с двух
+     метров, — записана фраза или нет, и не идёт ли запись прямо сейчас. */
+  function syncBigState(){
+    var el = $("bigState"), rec = clips[cur().key];
+    if(recording){ el.className = "rec"; el.textContent = "● ИДЁТ ЗАПИСЬ"; return; }
+    var redo = redoReason(cur().key, rec);
+    if(redo){ el.className = "redo"; el.textContent = "ПЕРЕПИСАТЬ"; return; }
+    if(rec){ el.className = "ok"; el.textContent = "ЗАПИСАНО ✓  " + rec.dur.toFixed(1) + " с"; return; }
+    el.className = "none"; el.textContent = "НЕ ЗАПИСАНО";
+  }
+
   function render(){
     var p = cur(), rec = clips[p.key];
+    syncBigState();
     $("curKey").textContent = p.key + "  ·  " + (idx + 1) + " из " + PHRASES.length;
     $("curText").textContent = p.text;
     if(!$("curHint").querySelector(".err")) $("curHint").textContent = p.hint;
@@ -804,6 +860,15 @@
   }
 
   /* ── Кнопки ─────────────────────────────────────────── */
+  var BIG_KEY = "naidi-voice-big";
+  function setBig(on){
+    document.body.classList.toggle("big", on);
+    $("bigBtn").textContent = on ? "Обычно" : "Крупно";
+    try{ localStorage.setItem(BIG_KEY, on ? "1" : ""); }catch(e){}
+  }
+  $("bigBtn").addEventListener("click", function(){ setBig(!document.body.classList.contains("big")); });
+  try{ if(localStorage.getItem(BIG_KEY)) setBig(true); }catch(e){}
+
   $("micBtn").addEventListener("click", function(){ initMic(localStorage.getItem(MIC_KEY) || null); });
   $("micSel").addEventListener("change", function(){
     localStorage.setItem(MIC_KEY, $("micSel").value);
