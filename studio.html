@@ -73,18 +73,10 @@
      и экран оказывается в паре метров. Значит, с этого расстояния должны
      читаться три вещи: какую фразу говорить, идёт ли запись и записана ли
      она уже. Остальное в этот момент только мешает, поэтому прячется. */
-  .big .lead,.big .listHead,.big #list,.big .note,.big .hint,.big .key{display:none;}
-  .big .phrase{font-size:clamp(56px,11vw,170px);line-height:1.05;margin:0 0 18px;}
-  .big .card{padding:30px 26px;}
-  .big button{padding:22px 38px;font-size:24px;border-radius:999px;}
-  .big .rec{min-width:300px;}
-  .big .meter{height:26px;margin:26px 0 10px;}
-  .big .meterNote{font-size:19px;}
-  .big .badges{gap:12px;}
-  .big .badge{font-size:19px;padding:9px 18px;}
+  .big .phrase{font-size:clamp(56px,11vw,170px);line-height:1.05;margin:2px 0 10px;}
   .big #bigState{display:block;}
   #bigState{display:none;font-weight:700;letter-spacing:.01em;margin:4px 0 16px;
-    font-size:clamp(34px,5.5vw,76px);line-height:1.1;}
+    font-size:clamp(22px,3vw,40px);line-height:1.15;}
   #bigState.none{color:var(--ink-faint);}
   #bigState.ok{color:var(--teal);}
   #bigState.rec{color:var(--warn);}
@@ -111,7 +103,7 @@
       <div class="prog"><i id="progBar"></i></div>
     </div>
     <span class="count" id="progText">0 из 0</span>
-    <button class="ghost" id="bigBtn">Крупно</button>
+    <button class="ghost" id="bigBtn">Фраза крупно</button>
     <button class="ghost" id="micBtn">Включить микрофон</button>
     <select id="micSel" hidden style="font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--surface);max-width:260px"></select>
   </div>
@@ -874,7 +866,7 @@
   var BIG_KEY = "naidi-voice-big";
   function setBig(on){
     document.body.classList.toggle("big", on);
-    $("bigBtn").textContent = on ? "Обычно" : "Крупно";
+    $("bigBtn").textContent = on ? "Фраза обычно" : "Фраза крупно";
     try{ localStorage.setItem(BIG_KEY, on ? "1" : ""); }catch(e){}
   }
   $("bigBtn").addEventListener("click", function(){ setBig(!document.body.classList.contains("big")); });
