@@ -18,11 +18,29 @@
   .lead{color:var(--ink-soft);font-size:14.5px;max-width:70ch;margin:0 0 10px;}
   .lead b{color:var(--ink);}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:22px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:22px;}
   .card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:12px;
     display:grid;gap:8px;}
   .card.no{opacity:.5;}
-  .pic{background:var(--sky);border-radius:10px;height:150px;display:grid;place-items:center;overflow:hidden;}
+  .pic{background:var(--sky);border-radius:10px;height:210px;display:grid;place-items:center;
+    overflow:hidden;cursor:zoom-in;}
+  /* на телефоне — одна крупная карточка в ряд, иначе не разглядеть */
+  @media (max-width:560px){
+    .grid{grid-template-columns:1fr;}
+    .pic{height:300px;}
+  }
+
+  /* Просмотр во весь экран: по картинке видно всё — и обрезку, и ореолы
+     по краю выреза, и настоящую ли прозрачность. В сетке этого не видно. */
+  #zoom{position:fixed;inset:0;z-index:50;background:rgba(32,28,22,.92);
+    display:none;place-items:center;padding:18px;cursor:zoom-out;}
+  #zoom.on{display:grid;}
+  #zoom img{max-width:96vw;max-height:80vh;
+    background:repeating-conic-gradient(#e9e6df 0% 25%, #fbfaf7 0% 50%) 50%/22px 22px;
+    border-radius:10px;}
+  #zoom img.m{transform:scaleX(-1);}
+  #zoom .cap{position:absolute;left:0;right:0;bottom:22px;text-align:center;color:#fff;
+    font-size:16px;text-shadow:0 2px 8px rgba(0,0,0,.6);}
   .pic img{max-width:88%;max-height:88%;display:block;}
   .pic img.m{transform:scaleX(-1);}
   .nm{font-weight:600;font-size:15px;}
@@ -53,6 +71,9 @@
 
   <div class="grid" id="grid"></div>
   <textarea id="out" hidden readonly></textarea>
+</div>
+
+<div id="zoom"><img id="zoomImg" alt=""><div class="cap" id="zoomCap"></div>
 </div>
 
 <div class="foot">
@@ -105,6 +126,14 @@
       img.alt = name;
       pic.appendChild(img);
     }
+      pic.addEventListener("click", function(){
+        if(MISSING[id]) return;
+        var z = document.getElementById("zoom"), zi = document.getElementById("zoomImg");
+        zi.src = "art/" + id + ".png";
+        zi.classList.toggle("m", !!st.mirror);
+        document.getElementById("zoomCap").textContent = name + " — нажмите, чтобы закрыть";
+        z.classList.add("on");
+      });
     card.appendChild(pic);
 
     var nm = document.createElement("div");
@@ -145,6 +174,13 @@
     paint();
   });
   save();
+
+  document.getElementById("zoom").addEventListener("click", function(){
+    this.classList.remove("on");
+  });
+  document.addEventListener("keydown", function(e){
+    if(e.key === "Escape") document.getElementById("zoom").classList.remove("on");
+  });
 
   document.getElementById("save").addEventListener("click", function(){
     var res = {replace:[], mirror:[]};
