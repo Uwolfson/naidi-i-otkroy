@@ -107,8 +107,13 @@
   var NEW = {bus:1,fire:1,tractor:1,boat:1,cow:1,horse:1,crab:1,bear:1,book:1,cup:1,cat:1,dolphin:1,moon:1,
              train:1,pig:1,sheep:1,lamp:1};
   var MISS = {};
+  /* Развёрнутые по отметке «развернуть»: отметки «годится» по ним ещё нет,
+     поэтому они тоже ждут просмотра и идут следом за заменёнными. */
+  var FLIP = {amb:1, bike:1, fish:1};
   ITEMS.sort(function(a,b){
-    function rank(it){ return NEW[it[0]] ? 0 : (MISS[it[0]] ? 1 : 2); }
+    function rank(it){
+      return NEW[it[0]] ? 0 : (MISS[it[0]] ? 1 : (FLIP[it[0]] ? 2 : 3));
+    }
     return rank(a) - rank(b);
   });
   var VER = "5";               // заодно сбрасывает кэш картинок в браузере
@@ -155,10 +160,10 @@
       nm.className = "nm"; nm.textContent = name;
       card.appendChild(nm);
 
-      if(NEW[id] || MISS[id]){
+      if(NEW[id] || MISS[id] || FLIP[id]){
         var bg = document.createElement("div");
-        bg.className = "badge " + (NEW[id] ? "nw" : "ms");
-        bg.textContent = NEW[id] ? "новая" : "не нашлось";
+        bg.className = "badge " + (MISS[id] ? "ms" : "nw");
+        bg.textContent = NEW[id] ? "новая" : (MISS[id] ? "не нашлось" : "развёрнута");
         if(MISS[id]) bg.title = MISS[id];
         card.appendChild(bg);
         if(MISS[id]){
