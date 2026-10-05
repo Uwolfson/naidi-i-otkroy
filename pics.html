@@ -192,6 +192,42 @@
     build();
   });
 
+  /* Отметки живут в браузере Даны и сами ко мне не попадают. Копирование
+     текста в чат — лишний шаг, на котором всё и застревает. Поэтому
+     отправка идёт в ту же телеграм-группу через воркер отзывов. */
+  function summaryText(){
+    var lines = ["Решения по картинкам"], n = 0;
+    ITEMS.forEach(function(it){
+      var s = state[it[0]] || {};
+      if(s.ok === undefined && !s.note && !s.mirror) return;
+      n++;
+      var bits = [it[1] + ":"];
+      bits.push(s.ok === false ? "ЗАМЕНИТЬ" : s.ok === true ? "годится" : "не отмечено");
+      if(s.mirror) bits.push("развернуть");
+      if(s.note && s.note.trim()) bits.push("— " + s.note.trim());
+      lines.push(bits.join(" "));
+    });
+    return n ? lines.join("
+") : "";
+  }
+
+  document.getElementById("send").addEventListener("click", function(){
+    var text = summaryText(), tip = document.getElementById("tip"), b = this;
+    if(!text){ tip.textContent = "Пока нечего отправлять — ничего не отмечено."; return; }
+    b.disabled = true; b.textContent = "Отправляю…";
+    fetch("https://naidi-feedback.wolfson-u.workers.dev", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text: text, mode: "картинки", style: "-", collected: 0,
+                            device: "страница утверждения", version: "pics-v3"})
+    }).then(function(r){
+      if(!r.ok) throw new Error(r.status);
+      tip.textContent = "Отправлено. Спасибо!";
+    }).catch(function(){
+      tip.textContent = "Не отправилось — нажмите «Собрать решения» и пришлите текст вручную.";
+    }).then(function(){ b.disabled = false; b.textContent = "Отправить мне"; });
+  });
+
   document.getElementById("save").addEventListener("click", function(){
     var res = {replace:[], mirror:[], notes:{}, unmarked:[]};
     ITEMS.forEach(function(it){
