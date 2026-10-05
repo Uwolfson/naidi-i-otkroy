@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Картинки на утверждение — «Найди и открой»</title>
+<style>
+  :root{
+    --bg:#F4F2EC; --surface:#fff; --ink:#2B2822; --ink-soft:#6C6559;
+    --ink-faint:#9A9284; --rule:#E3DDCF; --teal:#2F6E5E; --amber:#C77A18; --warn:#A24B3C;
+    --sky:#E7F0E6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 "Golos Text","Segoe UI",system-ui,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 18px 120px;}
+  h1{font-size:25px;margin:0 0 8px;}
+  .lead{color:var(--ink-soft);font-size:14.5px;max-width:70ch;margin:0 0 10px;}
+  .lead b{color:var(--ink);}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:22px;}
+  .card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:12px;
+    display:grid;gap:8px;}
+  .card.no{opacity:.5;}
+  .pic{background:var(--sky);border-radius:10px;height:150px;display:grid;place-items:center;overflow:hidden;}
+  .pic img{max-width:88%;max-height:88%;display:block;}
+  .pic img.m{transform:scaleX(-1);}
+  .nm{font-weight:600;font-size:15px;}
+  .row{display:flex;gap:6px;flex-wrap:wrap;}
+  button{font:inherit;border:0;border-radius:999px;padding:7px 13px;font-size:13.5px;cursor:pointer;
+    background:#F3F0E8;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule);}
+  button.on{background:var(--teal);color:#fff;box-shadow:none;}
+  button.no.on{background:var(--warn);}
+  .dir{font-size:12px;color:var(--ink-faint);}
+  .missing{background:#FBEDEA;border-color:#E8C7BF;}
+  .missing .pic{background:#F6E3DF;font-size:40px;}
+
+  .foot{position:fixed;left:0;right:0;bottom:0;background:rgba(244,242,236,.96);
+    border-top:1px solid var(--rule);backdrop-filter:blur(8px);padding:12px 18px;
+    display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+  .primary{background:var(--teal);color:#fff;box-shadow:none;padding:12px 22px;font-size:15px;}
+  .tip{font-size:13.5px;color:var(--ink-soft);}
+  textarea{width:100%;min-height:120px;margin-top:14px;font:13px ui-monospace,monospace;
+    border:1px solid var(--rule);border-radius:10px;padding:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Картинки на утверждение</h1>
+  <p class="lead">Подобрал 31 из 32 на Pixabay по фильтру «прозрачный фон». Лицензия там разрешает коммерческое использование без указания авторства, так что вопрос с правами закрыт. Каждая проверена скриптом: настоящий PNG с прозрачностью, обрезана по содержимому и приведена к квадрату.</p>
+  <p class="lead"><b>Что от вас нужно.</b> По каждой картинке два решения: годится ли она вообще и в ту ли сторону смотрит. Всё, что ездит, бегает и плавает, должно смотреть <b>влево</b> — кнопка «развернуть» зеркалит картинку, и я применю это к файлу. Отметки сохраняются сами, страницу можно закрыть и вернуться.</p>
+  <p class="lead"><b>Звезду не нашёл.</b> В выдаче по всем запросам только флаги, ёлки и конфетти. Нужна простая жёлтая звезда — тут понадобится ваша рука.</p>
+
+  <div class="grid" id="grid"></div>
+  <textarea id="out" hidden readonly></textarea>
+</div>
+
+<div class="foot">
+  <button class="primary" id="save">Собрать решения</button>
+  <span class="tip" id="tip"></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* Направление указано как подсказка, а не как факт: что предмет смотрит
+     не туда, человек видит мгновенно, а по миниатюре это определяется плохо.
+     Поэтому решение о зеркале принимает тот, кто смотрит. */
+  var ITEMS = [
+    ["car","Машинка",1],["bus","Автобус",1],["fire","Пожарная",1],["amb","Скорая",1],
+    ["train","Поезд",1],["tractor","Трактор",1],["bike","Велосипед",1],["heli","Вертолёт",1],
+    ["plane","Самолёт",1],["rocket","Ракета",0],["boat","Кораблик",1],
+    ["dog","Собака",1],["cat","Кошка",1],["cow","Корова",1],["horse","Лошадь",1],
+    ["pig","Поросёнок",1],["sheep","Овечка",1],["chick","Курица",1],["duck","Утка",1],
+    ["fish","Рыбка",1],["dolphin","Дельфин",1],["crab","Краб",0],["butter","Бабочка",0],
+    ["ball","Мячик",0],["bear","Мишка",0],["apple","Яблоко",0],["book","Книжка",0],
+    ["cup","Чашка",0],["lamp","Лампа",0],["flower","Цветок",0],["moon","Луна",0],
+    ["star","Звезда",0]
+  ];
+  var MISSING = {star:1};
+  var KEY = "naidi-pics-v1";
+  var state = {};
+  try{ state = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }catch(e){ state = {}; }
+
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+    var n = Object.keys(state).length;
+    document.getElementById("tip").textContent = "Отмечено: " + n + " из " + ITEMS.length;
+  }
+
+  var grid = document.getElementById("grid");
+  ITEMS.forEach(function(it){
+    var id = it[0], name = it[1], directional = it[2];
+    var st = state[id] || (state[id] = {ok:!MISSING[id], mirror:false});
+
+    var card = document.createElement("div");
+    card.className = "card" + (MISSING[id] ? " missing" : "");
+
+    var pic = document.createElement("div");
+    pic.className = "pic";
+    if(MISSING[id]){ pic.textContent = "нет"; }
+    else {
+      var img = document.createElement("img");
+      img.src = "art/" + id + ".png";
+      img.alt = name;
+      pic.appendChild(img);
+    }
+    card.appendChild(pic);
+
+    var nm = document.createElement("div");
+    nm.className = "nm"; nm.textContent = name;
+    card.appendChild(nm);
+
+    var dir = document.createElement("div");
+    dir.className = "dir";
+    dir.textContent = directional ? "должен смотреть влево" : "направление не важно";
+    card.appendChild(dir);
+
+    var row = document.createElement("div");
+    row.className = "row";
+
+    var bOk = document.createElement("button");
+    bOk.textContent = "годится";
+    var bNo = document.createElement("button");
+    bNo.className = "no"; bNo.textContent = "заменить";
+    var bM = document.createElement("button");
+    bM.textContent = "развернуть";
+
+    function paint(){
+      bOk.classList.toggle("on", st.ok);
+      bNo.classList.toggle("on", !st.ok);
+      bM.classList.toggle("on", !!st.mirror);
+      card.classList.toggle("no", !st.ok);
+      var img = pic.querySelector("img");
+      if(img) img.classList.toggle("m", !!st.mirror);
+    }
+    bOk.addEventListener("click", function(){ st.ok = true; save(); paint(); });
+    bNo.addEventListener("click", function(){ st.ok = false; save(); paint(); });
+    bM.addEventListener("click", function(){ st.mirror = !st.mirror; save(); paint(); });
+
+    row.appendChild(bOk); row.appendChild(bNo);
+    if(!MISSING[id]) row.appendChild(bM);
+    card.appendChild(row);
+    grid.appendChild(card);
+    paint();
+  });
+  save();
+
+  document.getElementById("save").addEventListener("click", function(){
+    var res = {replace:[], mirror:[]};
+    ITEMS.forEach(function(it){
+      var s = state[it[0]] || {};
+      if(!s.ok) res.replace.push(it[0]);
+      if(s.mirror) res.mirror.push(it[0]);
+    });
+    var text = JSON.stringify(res, null, 2);
+    var out = document.getElementById("out");
+    out.hidden = false; out.value = text; out.select();
+    try{ navigator.clipboard.writeText(text); }catch(e){}
+    document.getElementById("tip").textContent =
+      "Заменить: " + res.replace.length + ", развернуть: " + res.mirror.length + ". Скопировано.";
+  });
+})();
+</script>
+</body>
+</html>
