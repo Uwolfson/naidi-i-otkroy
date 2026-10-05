@@ -871,7 +871,11 @@
         list.forEach(function(k){ voiceHave[k] = true; });
         // клипы крошечные, тянем сразу все: иначе первая фраза каждого вида
         // успеет прозвучать синтезатором, и голос будет скакать
-        list.forEach(loadClip);
+        // служебные и похвалы вперёд: они нужны в первые же секунды
+        list.slice().sort(function(a, b){
+          var w = function(k){ return /^s_/.test(k) ? 0 : /^p_/.test(k) ? 1 : 2; };
+          return w(a) - w(b);
+        }).forEach(loadClip);
       })
       .catch(function(){});
   }
@@ -890,6 +894,14 @@
   function clipsReady(keys){
     if(!keys || !keys.length) return false;
     for(var i = 0; i < keys.length; i++){ if(!voiceClips[keys[i]]) return false; }
+    return true;
+  }
+
+  // Запись существует, но ещё не доехала: ждать её лучше, чем говорить
+  // синтезатором — иначе голос прыгает с мамы на робота и обратно
+  function clipsExpected(keys){
+    if(!keys || !keys.length || !voiceHave) return false;
+    for(var i = 0; i < keys.length; i++){ if(!voiceHave[keys[i]]) return false; }
     return true;
   }
 
@@ -952,12 +964,18 @@
     }
   }
 
-  function say(text, prio, keys){
+  function say(text, prio, keys, waited){
     prio = prio || 0;
     text = String(text || "").trim();
     keys = keys ? (typeof keys === "string" ? [keys] : keys) : null;
     if(keys) keys.forEach(loadClip);
     if(!S.voice) return;
+
+    // Подождём запись до трёх секунд, потом уже скажем синтезатором
+    if(keys && !clipsReady(keys) && clipsExpected(keys) && (waited || 0) < 10){
+      setTimeout(function(){ say(text, prio, keys, (waited || 0) + 1); }, 300);
+      return;
+    }
     if(!clipsReady(keys) && (!text || !window.speechSynthesis)) return;
 
     var entry = {text:text, prio:prio, keys:keys, id: keys ? keys.join("+") : text};
