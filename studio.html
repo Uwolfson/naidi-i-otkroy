@@ -143,6 +143,7 @@
       <button class="ghost on" data-filter="all">Все</button>
       <button class="ghost" data-filter="todo">Не записаны</button>
       <button class="ghost" data-filter="warn">С замечаниями</button>
+      <button class="ghost" data-filter="redo">Переписать</button>
     </div>
   </div>
   <ul id="list"></ul>
@@ -821,6 +822,13 @@
         cut.textContent = "лишнее в начале убрано";
         b.appendChild(cut);
       }
+      var redoWhy = redoReason(p.key, rec);
+      if(redoWhy){
+        var rb = document.createElement("span");
+        rb.className = "badge bad";
+        rb.textContent = "переписать: " + redoWhy;
+        b.appendChild(rb);
+      }
       var verdict = document.createElement("span");
       verdict.className = "badge " + (probs.length ? "bad" : "good");
       verdict.textContent = probs.length ? probs.join(", ") : "в порядке";
@@ -833,14 +841,17 @@
     var ul = $("list");
     ul.textContent = "";
     PHRASES.forEach(function(p, i){
-      var rec = clips[p.key], probs = problems(rec);
+      var rec = clips[p.key], probs = problems(rec), redo = redoReason(p.key, rec);
       if(filter === "todo" && rec) return;
-      if(filter === "warn" && (!rec || !probs.length)) return;
+      if(filter === "warn" && (!rec || (!probs.length && !redo))) return;
+      if(filter === "redo" && !redo) return;
       var li = document.createElement("li");
-      li.className = (rec ? (probs.length ? "warn" : "done") : "") + (i === idx ? " cur" : "");
+      li.className = (rec ? ((probs.length || redo) ? "warn" : "done") : "") + (i === idx ? " cur" : "");
       li.innerHTML = '<span class="dot"></span><span class="txt"></span><span class="k"></span>';
       li.querySelector(".txt").textContent = p.text;
-      li.querySelector(".k").textContent = rec ? (probs.length ? probs[0] : rec.dur.toFixed(1) + "с") : "—";
+      li.querySelector(".k").textContent = rec
+        ? (redo ? "переписать" : probs.length ? probs[0] : rec.dur.toFixed(1) + "с")
+        : "—";
       li.addEventListener("click", function(){ idx = i; render(); window.scrollTo({top:0,behavior:"smooth"}); });
       ul.appendChild(li);
     });
