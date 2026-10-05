@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Названия предметов — «Найди и открой»</title>
+<style>
+  :root{
+    --bg:#F4F2EC; --surface:#fff; --surface-2:#FAF8F3;
+    --ink:#2B2822; --ink-soft:#6C6559; --ink-faint:#9A9284; --rule:#E3DDCF;
+    --teal:#2F6E5E; --amber:#C77A18; --warn:#A24B3C;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.55 "Golos Text","Segoe UI",system-ui,sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:24px 18px 110px;}
+  h1{font-size:24px;margin:0 0 6px;}
+  h2{font-size:17px;margin:30px 0 4px;}
+  .lead{color:var(--ink-soft);font-size:14.5px;margin:0 0 6px;max-width:72ch;}
+  .lead strong{color:var(--ink);}
+
+  .row{display:grid;grid-template-columns:52px 1fr;gap:14px;align-items:start;
+    background:var(--surface);border:1px solid var(--rule);border-radius:12px;
+    padding:14px 16px;margin-top:8px;}
+  .art{font-size:34px;line-height:1.1;}
+  .now{font-size:18px;font-weight:600;}
+  .why{font-size:13.5px;color:var(--ink-soft);margin:3px 0 10px;}
+  .opts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  label.opt{display:inline-flex;align-items:center;gap:7px;font-size:14.5px;
+    background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--rule);
+    border-radius:999px;padding:8px 14px;cursor:pointer;}
+  label.opt.on{box-shadow:inset 0 0 0 2px var(--amber);background:#FFF8EC;}
+  input[type=text]{font:inherit;font-size:15px;padding:8px 12px;border-radius:9px;
+    border:1px solid var(--rule);background:#fff;min-width:150px;}
+  .rec{font-size:12px;color:var(--warn);margin-top:8px;}
+  .rec.none{color:var(--ink-faint);}
+
+  .foot{position:fixed;left:0;right:0;bottom:0;background:rgba(244,242,236,.96);
+    border-top:1px solid var(--rule);backdrop-filter:blur(8px);
+    padding:12px 18px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+  button{font:inherit;border:0;border-radius:999px;padding:12px 22px;font-weight:600;cursor:pointer;}
+  .primary{background:var(--teal);color:#fff;}
+  .ghost{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule);}
+  .tip{font-size:13.5px;color:var(--ink-soft);}
+  textarea{width:100%;min-height:150px;font:13px ui-monospace,monospace;margin-top:12px;
+    border:1px solid var(--rule);border-radius:10px;padding:12px;background:#fff;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Уменьшительные в названиях</h1>
+  <p class="lead">Ребёнок учит слово в той форме, в которой его слышит. «Собачка» тёплая, но на улице ему скажут «собака», и это должно быть то же самое слово. При этом часть уменьшительных — обычные названия игрушек, и возвращать их к «взрослой» форме странно: плюшевого медведя все зовут мишкой.</p>
+  <p class="lead"><strong>Отметьте, где оставить, а где заменить.</strong> Можно вписать свой вариант. Внизу кнопка — она соберёт решения, их нужно прислать мне.</p>
+  <p class="lead" id="recNote"></p>
+
+  <div id="groups"></div>
+
+  <textarea id="out" hidden readonly></textarea>
+</div>
+
+<div class="foot">
+  <button class="primary" id="saveBtn">Собрать решения</button>
+  <button class="ghost" id="fileBtn">Скачать файлом</button>
+  <span class="tip" id="tip"></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* Разбор по каждому названию: что сейчас, чем заменить, и стоит ли.
+     mine — моя рекомендация по умолчанию, её видно сразу отмеченной,
+     чтобы не размечать с нуля все тридцать строк. */
+  var LIST = [
+    {g:1, id:"dog",  art:"🐶", now:"Собачка", alt:"Собака", mine:"alt",
+     why:"Главное слово из первых у любого ребёнка. На улице он услышит «собака»."},
+    {g:1, id:"cat",  art:"🐱", now:"Котик",   alt:"Кот", mine:"alt",
+     why:"«Котик» — обращение, а не название. Для узнавания нужно «кот» или «кошка»."},
+    {g:1, id:"fish", art:"🐟", now:"Рыбка",   alt:"Рыба", mine:"alt",
+     why:"«Рыба» — то слово, которое встретится и в книжке, и в тарелке."},
+    {g:1, id:"horse",art:"🐴", now:"Лошадка", alt:"Лошадь", mine:"keep",
+     why:"Спорно: «лошадка» — стандартное название игрушки, как и «мишка». Вам решать."},
+    {g:1, id:"duck", art:"🦆", now:"Уточка",  alt:"Утка", mine:"alt",
+     why:"«Утка» короче и звучит чётче, а это для узнавания важно."},
+    {g:1, id:"pig",  art:"🐷", now:"Свинка",  alt:"Поросёнок", mine:"alt",
+     why:"«Свинья» звучит как ругательство, «свинка» — ещё и болезнь. «Поросёнок» — честное слово без обоих смыслов."},
+    {g:1, id:"sheep",art:"🐑", now:"Овечка",  alt:"Овца", mine:"alt",
+     why:"«Овца» — нейтральное название. «Барашек» тоже возможен, если нравится больше."},
+    {g:1, id:"chick",art:"🐔", now:"Курочка", alt:"Курица", mine:"alt",
+     why:"«Курица» — то, что ребёнок увидит и в книжке, и в деревне."},
+    {g:1, id:"crab", art:"🦀", now:"Крабик",  alt:"Краб", mine:"alt",
+     why:"Уменьшительное тут ничего не добавляет."},
+    {g:1, id:"star", art:"⭐", now:"Звёздочка", alt:"Звезда", mine:"alt",
+     why:"«Звезда» — обычное слово, «звёздочка» — скорее значок."},
+    {g:1, id:"boat", art:"⛵", now:"Кораблик", alt:"Кораблик", mine:"keep",
+     why:"Игрушечный кораблик — устоявшееся слово. «Корабль» для этого значка великоват."},
+    {g:1, id:"book", art:"📖", now:"Книжка",  alt:"Книга", mine:"keep",
+     why:"«Книжка» — обычное слово для детской книги, не уменьшение ради ласки."},
+
+    {g:2, id:"bear", art:"🧸", now:"Мишка",   alt:"Медведь", mine:"keep",
+     why:"Это название игрушки, а не уменьшение от «медведя». Плюшевого медведя зовут мишкой все."},
+    {g:2, id:"car",  art:"🚗", now:"Машинка", alt:"Машина", mine:"keep",
+     why:"«Машинка» — стандартное слово для игрушечной машины. Но если в игре это настоящая машина, то «машина»."},
+
+    {g:3, id:"butter",art:"🦋", now:"Бабочка", alt:"Бабочка", mine:"keep",
+     why:"Выглядит уменьшительным, но это обычное слово: другой формы просто нет."},
+    {g:3, id:"cup",  art:"☕", now:"Чашка",   alt:"Чашка", mine:"keep",
+     why:"То же самое: «чашка» — базовое слово, уменьшительное было бы «чашечка»."},
+    {g:3, id:"ball", art:"⚽", now:"Мяч",     alt:"Мяч", mine:"keep",
+     why:"Уже нейтральное. Указано на случай, если наоборот хочется «мячик»."},
+    {g:3, id:"flower",art:"🌻", now:"Цветок", alt:"Цветок", mine:"keep",
+     why:"Уже нейтральное, уменьшительное было бы «цветочек»."}
+  ];
+
+  var TITLES = {
+    1:"Явно уменьшительные — тут и решать",
+    2:"Уменьшительные, но так зовут именно игрушку",
+    3:"Только выглядят уменьшительными — это обычные слова"
+  };
+
+  var $ = function(id){ return document.getElementById(id); };
+  var choice = {};   // id -> итоговое название
+
+  // Что уже записано: страница лежит на том же адресе, что и студия,
+  // поэтому видит её хранилище. Смена названия = перезапись трёх фраз.
+  var recorded = {};
+  function loadRecorded(){
+    return new Promise(function(res){
+      try{
+        var rq = indexedDB.open("naidi-voice", 1);
+        rq.onsuccess = function(){
+          var db = rq.result;
+          if(!db.objectStoreNames.contains("clips")) return res();
+          var cur = db.transaction("clips","readonly").objectStore("clips").openCursor();
+          cur.onsuccess = function(){
+            var c = cur.result;
+            if(!c) return res();
+            recorded[c.key] = true; c.continue();
+          };
+          cur.onerror = function(){ res(); };
+        };
+        rq.onerror = function(){ res(); };
+      }catch(e){ res(); }
+    });
+  }
+
+  /* Эти записаны ещё через блютус, в телефонном режиме: полоса обрезана
+     примерно на 4 кГц, голос тихий. Их переписывать в любом случае,
+     поэтому и название у них можно менять без потерь. */
+  var REDO = {ball:1, bear:1, car:1, dog:1};
+
+  function recNote(id){
+    var keys = ["n_" + id, "q_" + id, "t_" + id].filter(function(k){ return recorded[k]; });
+    if(REDO[id]) return {text:"записано через блютус — всё равно под перезапись, менять бесплатно", none:true};
+    if(!keys.length) return {text:"ещё не записано — менять бесплатно", none:true};
+    return {text:"уже записано фраз: " + keys.length + " — при замене их придётся переписать", none:false};
+  }
+
+  function render(){
+    var box = $("groups");
+    box.textContent = "";
+    [1,2,3].forEach(function(g){
+      var h = document.createElement("h2");
+      h.textContent = TITLES[g];
+      box.appendChild(h);
+      LIST.filter(function(x){ return x.g === g; }).forEach(function(it){
+        var row = document.createElement("div");
+        row.className = "row";
+
+        var art = document.createElement("div");
+        art.className = "art"; art.textContent = it.art;
+        row.appendChild(art);
+
+        var right = document.createElement("div");
+        var now = document.createElement("div");
+        now.className = "now"; now.textContent = it.now;
+        var why = document.createElement("div");
+        why.className = "why"; why.textContent = it.why;
+        right.appendChild(now); right.appendChild(why);
+
+        var opts = document.createElement("div");
+        opts.className = "opts";
+
+        var keep = document.createElement("label");
+        keep.className = "opt";
+        keep.innerHTML = '<input type="radio" name="r_' + it.id + '" value="keep"> оставить «' + it.now + '»';
+
+        var alt = document.createElement("label");
+        alt.className = "opt";
+        alt.innerHTML = '<input type="radio" name="r_' + it.id + '" value="alt"> заменить на';
+        var field = document.createElement("input");
+        field.type = "text";
+        field.value = it.alt;
+        alt.appendChild(field);
+
+        opts.appendChild(keep); opts.appendChild(alt);
+        right.appendChild(opts);
+
+        var r = recNote(it.id);
+        var rec = document.createElement("div");
+        rec.className = "rec" + (r.none ? " none" : "");
+        rec.textContent = r.text;
+        right.appendChild(rec);
+        row.appendChild(right);
+        box.appendChild(row);
+
+        function pick(which){
+          keep.classList.toggle("on", which === "keep");
+          alt.classList.toggle("on", which === "alt");
+          keep.querySelector("input").checked = which === "keep";
+          alt.querySelector("input").checked = which === "alt";
+          choice[it.id] = which === "keep" ? it.now : field.value.trim();
+        }
+        keep.addEventListener("click", function(){ pick("keep"); });
+        alt.addEventListener("click", function(){ pick("alt"); });
+        field.addEventListener("input", function(){
+          if(alt.classList.contains("on")) choice[it.id] = field.value.trim();
+        });
+        pick(it.mine);
+      });
+    });
+  }
+
+  function result(){
+    var changed = {}, kept = [];
+    LIST.forEach(function(it){
+      var v = choice[it.id] || it.now;
+      if(v && v !== it.now) changed[it.id] = v; else kept.push(it.id);
+    });
+    return {changed:changed, keptCount:kept.length};
+  }
+
+  $("saveBtn").addEventListener("click", function(){
+    var r = result();
+    var text = JSON.stringify(r.changed, null, 2);
+    $("out").hidden = false;
+    $("out").value = text;
+    $("out").select();
+    try{ navigator.clipboard.writeText(text); }catch(e){}
+    var n = Object.keys(r.changed).length;
+    $("tip").textContent = n
+      ? "Менять: " + n + ". Скопировано — вставьте мне в чат."
+      : "Всё остаётся как есть.";
+  });
+
+  $("fileBtn").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(result().changed, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "names.json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+  });
+
+  loadRecorded().then(function(){
+    var n = Object.keys(recorded).length;
+    $("recNote").textContent = n
+      ? "В студии на этом устройстве уже записано фраз: " + n + ". У строк ниже видно, чьи фразы придётся переписать при замене."
+      : "Записей в студии на этом устройстве не видно — значит, менять названия пока бесплатно.";
+    render();
+  });
+})();
+</script>
+</body>
+</html>
