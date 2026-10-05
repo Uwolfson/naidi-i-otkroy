@@ -690,6 +690,7 @@
   var STARTER = ITEMS.slice(0,6).map(function(i){ return i.id; });
 
   var PRAISE = ["Верно!","Точно!","Правильно!","Да!","Ага!","Есть!","Так и есть!","Вот так!","Получилось!","Да, верно!"];
+  var PRAISE_OFF = {3:1};   // индексы, временно выключенные из ротации
   var ASK = ["Где ", "Покажи, где ", "Найди, где "];
 
   /* ── State ─────────────────────────────────────────── */
@@ -1483,7 +1484,10 @@
     stage.querySelectorAll(".item").forEach(function(o){ o.classList.remove("hint"); });
     SFX.right();
     confetti(el);
-    var pi = Math.floor(Math.random() * PRAISE.length);
+    // «Да!» записано с перегрузом — убрано из ротации до перезаписи.
+    // Девяти похвал хватает с запасом, подмены не слышно.
+    var pi;
+    do { pi = Math.floor(Math.random() * PRAISE.length); } while(PRAISE_OFF[pi]);
     say(PRAISE[pi] + " " + target.name + "!", 2, ["p_" + pi, "n_" + target.id]);
     playReaction(el, item, function(){
       save();
