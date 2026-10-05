@@ -554,6 +554,12 @@
     </div>
 
     <div class="group">
+      <p class="lbl">Что видно по игре</p>
+      <p class="fbNote" id="jView">Пока нечего показать: ребёнок ещё не играл.</p>
+      <div class="segs"><button class="seg" id="jDump"><strong>Скачать журнал</strong><span>Файлом, для разбора. Хранится только на этом устройстве.</span></button></div>
+    </div>
+
+    <div class="group">
       <p class="lbl">Проверка звука</p>
       <div class="segs">
         <button class="seg" id="sndTest"><strong>Проверить звук</strong><span>Должны прозвучать короткий писк, лай собаки и голос. Если тихо — смотрите, что показано ниже.</span></button>
@@ -705,6 +711,129 @@
   };
   var KEY = "naidi-i-otkroy-v1";
 
+  /* ── Журнал ─────────────────────────────────────────
+     Что ребёнок выбирает сам, что уже узнаёт с первого раза и что с чем
+     путает — ровно то, ради чего игра и делается, и единственный способ
+     это увидеть. Журнал живёт только на устройстве: в детской части нет
+     ни одного сетевого запроса. Наружу он уходит лишь вместе с отзывом,
+     который родитель отправляет руками.
+
+     Время считается по активности, а не по открытой вкладке: ребёнок
+     уходит, планшет остаётся включённым, и вкладка «играет» ещё час.
+     Промежуток между нажатиями длиннее тридцати секунд в игру не
+     засчитывается, а три минуты тишины закрывают сессию. */
+  var JKEY = "naidi-journal-v1";
+  var J = {v:1, items:{}, sessions:[], totals:{sessions:0, ms:0, rounds:0, boxes:0}};
+  var jSess = null, jLast = 0, jIdle = null, jRoundAt = 0, jRoundWrong = 0, jRoundHint = false;
+  var J_IDLE = 180000, J_GAP = 30000, J_KEEP = 20;
+
+  function jLoad(){
+    try{
+      var raw = localStorage.getItem(JKEY);
+      if(raw){ var p = JSON.parse(raw); if(p && p.v === 1) J = p; }
+    }catch(e){}
+  }
+  function jSave(){ try{ localStorage.setItem(JKEY, JSON.stringify(J)); }catch(e){} }
+
+  function jItem(id){
+    if(!J.items[id]) J.items[id] = {asked:0, firstTry:0, wrong:0, hinted:0, msSum:0, picked:0, first:0, confused:{}};
+    return J.items[id];
+  }
+
+  function jTouch(){
+    var now = Date.now();
+    if(!jSess){
+      jSess = {start:new Date().toISOString(), ms:0, rounds:0, boxes:0, picks:[], end:"idle"};
+      J.sessions.push(jSess);
+      while(J.sessions.length > J_KEEP) J.sessions.shift();
+      J.totals.sessions++;
+    } else {
+      var d = Math.min(now - jLast, J_GAP);
+      jSess.ms += d; J.totals.ms += d;
+    }
+    jLast = now;
+    clearTimeout(jIdle);
+    jIdle = setTimeout(function(){ jEnd("ушёл"); }, J_IDLE);
+  }
+
+  function jEnd(why){
+    if(!jSess) return;
+    jSess.end = why;
+    jSess = null;
+    clearTimeout(jIdle);
+    jSave();
+  }
+
+  function jChooserStart(){ jTouch(); jSess.picks.push([]); }
+  function jPick(id){
+    jTouch();
+    var it = jItem(id), cur = jSess.picks[jSess.picks.length - 1];
+    it.picked++;
+    if(cur){ if(!cur.length) it.first++; cur.push(id); }   // первый выбор круга — самый любимый
+    jSave();
+  }
+  function jRoundStart(id){
+    jTouch();
+    jItem(id).asked++; jSess.rounds++; J.totals.rounds++;
+    jRoundAt = Date.now(); jRoundWrong = 0; jRoundHint = false;
+  }
+  function jWrong(targetId, gotId){
+    jTouch();
+    var t = jItem(targetId);
+    t.wrong++;
+    t.confused[gotId] = (t.confused[gotId] || 0) + 1;
+    jRoundWrong++;
+  }
+  function jRight(targetId){
+    jTouch();
+    var t = jItem(targetId);
+    if(!jRoundWrong) t.firstTry++;
+    if(jRoundHint) t.hinted++;
+    t.msSum += Math.min(Date.now() - jRoundAt, 60000);
+    jSave();
+  }
+  function jBox(){ jTouch(); jSess.boxes++; J.totals.boxes++; jSave(); }
+
+  function jName(id){ return BY_ID[id] ? BY_ID[id].name : id; }
+
+  function jSummary(){
+    var ids = Object.keys(J.items), i;
+    var rate = function(id){ var it = J.items[id]; return it.asked ? it.firstTry / it.asked : 0; };
+    var known = ids.filter(function(id){ return J.items[id].asked >= 3 && rate(id) >= 0.7; });
+    var hard  = ids.filter(function(id){ return J.items[id].asked >= 3 && rate(id) < 0.4; });
+    var fav   = ids.filter(function(id){ return J.items[id].first > 0; })
+                   .sort(function(a, b){ return J.items[b].first - J.items[a].first; }).slice(0, 5);
+    var pairs = [];
+    ids.forEach(function(id){
+      Object.keys(J.items[id].confused).forEach(function(o){
+        pairs.push([id, o, J.items[id].confused[o]]);
+      });
+    });
+    pairs.sort(function(a, b){ return b[2] - a[2]; });
+    return {
+      sessions: J.totals.sessions,
+      minutes: Math.round(J.totals.ms / 60000),
+      rounds: J.totals.rounds,
+      boxes: J.totals.boxes,
+      known: known.map(jName),
+      hard: hard.map(jName),
+      favourite: fav.map(jName),
+      confused: pairs.slice(0, 5).map(function(p){ return jName(p[0]) + " → " + jName(p[1]) + " ×" + p[2]; })
+    };
+  }
+
+  function jSummaryText(){
+    var s = jSummary();
+    if(!s.sessions) return "";
+    var L = ["", "— что видно по игре —",
+      "сессий " + s.sessions + " · " + s.minutes + " мин · кругов " + s.rounds + " · коробок " + s.boxes];
+    if(s.favourite.length) L.push("выбирает первым: " + s.favourite.join(", "));
+    if(s.known.length)     L.push("узнаёт сразу: " + s.known.join(", "));
+    if(s.hard.length)      L.push("трудно: " + s.hard.join(", "));
+    if(s.confused.length)  L.push("путает: " + s.confused.join("; "));
+    return L.join("\n");
+  }
+
   function save(){
     try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
   }
@@ -778,6 +907,7 @@
     if(actx && actx.state !== "running") { try{ actx.resume(); }catch(e){} }
   }, true);
   document.addEventListener("visibilitychange", function(){
+    if(document.hidden) jEnd("свернул");
     if(!document.hidden && actx && actx.state !== "running") { try{ actx.resume(); }catch(e){} }
   });
 
@@ -1123,6 +1253,7 @@
   function startChooser(){
     picks = []; pairQueue = [];
     clearTimers();
+    jChooserStart();
     busy = false;
     stage.textContent = "";
     chooser.textContent = "";
@@ -1169,6 +1300,7 @@
     var item = BY_ID[el.dataset.id];
     ac(); SFX.pop();
     picks.push(item.id);
+    jPick(item.id);
     say(item.name, 2, "n_" + item.id);
     // остальные предметы остаются нажимаемыми: здесь никто не ждёт своей очереди
     playReaction(el, item, function(){
@@ -1244,6 +1376,7 @@
     });
 
     roundTaps = 0;
+    jRoundStart(target.id);
     showCue(target);
     askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1, "q_" + target.id); }, 620);
     // Первый раунд сессии — обучающий: подсказка вдвое раньше, и если ребёнок
@@ -1268,6 +1401,7 @@
       el.classList.add("hint");
       // Ребёнок за весь раунд не нажал ничего — скорее всего, не понял,
       // что вообще делать. Тогда кроме свечения приходит рука.
+      jRoundHint = true;
       if(roundTaps === 0) showHand(el);
     }, ms);
   }
@@ -1474,6 +1608,7 @@
       el.classList.remove("nope"); void el.offsetWidth; el.classList.add("nope");
       var now = Date.now();
       if(now - lastWrongSfx > 450){ SFX.wrong(); lastWrongSfx = now; }
+      jWrong(target.id, item.id);
       say("Это " + item.name.toLowerCase() + ". Где " + target.name.toLowerCase() + "?", 0,
             ["t_" + item.id, "q_" + target.id]);
       armHint(3500);
@@ -1486,6 +1621,7 @@
     confetti(el);
     // «Да!» записано с перегрузом — убрано из ротации до перезаписи.
     // Девяти похвал хватает с запасом, подмены не слышно.
+    jRight(target.id);
     var pi;
     do { pi = Math.floor(Math.random() * PRAISE.length); } while(PRAISE_OFF[pi]);
     say(PRAISE[pi] + " " + target.name + "!", 2, ["p_" + pi, "n_" + target.id]);
@@ -1503,6 +1639,7 @@
   var boxTaps = 0, boxTipTimer = null;
 
   function dropBox(){
+    jBox();
     boxTaps = 0;
     box.dataset.taps = "0";
     box.className = "";
@@ -1672,7 +1809,7 @@
   function holdStart(e){
     e.preventDefault();
     fill.style.transition = "width 1.4s linear"; fill.style.width = "100%";
-    holdTimer = setTimeout(function(){ holdEnd(); syncSegs(); openSheet(settings); }, 1400);
+    holdTimer = setTimeout(function(){ holdEnd(); syncSegs(); showJournal(); openSheet(settings); }, 1400);
   }
   function holdEnd(){
     clearTimeout(holdTimer);
@@ -1733,6 +1870,26 @@
     }
   });
 
+  function showJournal(){
+    var s = jSummary(), el = $("jView");
+    if(!s.sessions){ el.textContent = "Пока нечего показать: ребёнок ещё не играл."; return; }
+    var L = ["Сессий " + s.sessions + ", всего " + s.minutes + " мин · кругов " + s.rounds + " · коробок " + s.boxes];
+    if(s.favourite.length) L.push("Выбирает первым: " + s.favourite.join(", "));
+    if(s.known.length)     L.push("Узнаёт сразу: " + s.known.join(", "));
+    if(s.hard.length)      L.push("Пока трудно: " + s.hard.join(", "));
+    if(s.confused.length)  L.push("Путает: " + s.confused.join("; "));
+    el.textContent = L.join(" · ");
+  }
+
+  $("jDump").addEventListener("click", function(){
+    var blob = new Blob([JSON.stringify(J, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "naidi-journal.json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+  });
+
   $("sndTest").addEventListener("click", function(){
     var c = ac();
     var diag = $("sndDiag");
@@ -1771,7 +1928,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-17";
+  var VERSION = "proto-18";
 
   function deviceLine(){
     var ua = navigator.userAgent;
@@ -1807,7 +1964,9 @@
       return;
     }
     var payload = {
-      text: text,
+      // сводка журнала уходит внутри текста: так она попадает в группу
+      // вместе с отзывом и не требует отдельного согласия
+      text: text + jSummaryText(),
       age: $("fbAge").value,
       mode: S.mode,
       style: S.style,
@@ -1844,6 +2003,7 @@
   }
 
   load();
+  jLoad();
   applyVolumes();
   document.body.dataset.style = S.style;
   syncShelfNum();
@@ -1856,6 +2016,8 @@
     startScr.hidden = true;
     buildRound();
   });
+
+  window.addEventListener("pagehide", function(){ jEnd("закрыл"); });
 
   // Carry progress across a republish for anyone with the page open
   try{
