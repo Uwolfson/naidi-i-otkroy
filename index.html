@@ -1608,9 +1608,6 @@
     heli: {offset:6, dur:2.7, gain:0.5, rateFrom:0.72, rateOver:1}
   };
 
-  // Синтезированные звуки идут вперёд записей: у велосипеда в наборе лежал
-  // шорох цепи, а ребёнку нужен звонок — его и слышно.
-  var SFX_SYNTH = { bike: bell };
 
   var sfxBuffers = {}, sfxAsked = {}, sfxError = "";
 
@@ -1694,9 +1691,15 @@
     }
     var g = c.createGain();
     var peak = opts.gain || 0.5;
+    // Плавный вход нужен длинным записям: их режут из середины, и без него
+    // на стыке щёлкает. Короткому звуку он, наоборот, срезает самое главное —
+    // удар. У звонка вся суть в первых миллисекундах: с четвертью секунды
+    // нарастания вместо «дзинь» слышно невнятное гудение.
+    var attack = buf.duration > 3 ? 0.25 : 0.004;
+    var release = buf.duration > 3 ? 0.45 : Math.min(0.12, dur * 0.2);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.25);
-    g.gain.setValueAtTime(peak, t + Math.max(0.3, dur - 0.45));
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.setValueAtTime(peak, t + Math.max(attack + 0.02, dur - release));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(g); g.connect(bus());
     src.start(t, offset, dur + 0.1);
@@ -1705,13 +1708,13 @@
   }
 
   function itemSound(item){
-    if(SFX_SYNTH[item.id]) return SFX_SYNTH[item.id]();
     var o = SFX_OPTS[item.id] || {};
     if(playSample(item.id, o.offset, o.dur, o)) return;
     loadSample(item.id);                       // не успел загрузиться — к следующему разу успеет
     // Web Audio не смог — пробуем обычным проигрывателем
     if(sfxBuffers[item.id] === null && playFallback(item.id, o.offset, o.dur)) return;
     if(item.id === "heli") rotor(2.7);         // у вертолёта есть синтезированный запасной
+    if(item.id === "bike") bell();             // и у велосипеда тоже
   }
 
   function playReaction(el, item, after){
@@ -2190,7 +2193,7 @@
     "Вопрос звучит первым, а картинки появляются уже под голос: раньше они были на экране раньше вопроса, и ребёнок бил по ним не слушая.",
     "После верного нажатия вторая картинка исчезает сразу — ничто не отвлекает от ожившего предмета.",
     "Тычок по карточке, которая уже ушла со сцены, не засчитывается следующей паре.",
-    "У велосипеда звонок вместо шороха цепи."
+    "Короткие звуки больше не глохнут: четверть секунды плавного нарастания съедала удар, и велосипедный звонок звучал гудением вместо «дзинь»."
   ];
   (function(){
     var el = $("verNote");
