@@ -614,7 +614,8 @@
 
     <div class="group"><button class="dangerBtn" id="resetBtn">Начать коллекцию заново</button></div>
 
-    <p class="note"><strong>Это прототип петли, а не готовая игра.</strong> Предметы — временные эмодзи вместо настоящих 2D-ассетов, голос — синтез речи браузера вместо живой актрисы. Проверяем здесь одно: понимает ли ребёнок, что от него хотят, и возвращается ли он к коробке. Родительский вход открывается удержанием шестерёнки — пример защиты от случайного нажатия.</p>
+    <p class="note"><strong>Это прототип петли, а не готовая игра.</strong> Проверяем здесь одно: понимает ли ребёнок, что от него хотят, и возвращается ли он к коробке. Родительский вход открывается удержанием шестерёнки — пример защиты от случайного нажатия.</p>
+    <p class="note" id="verNote"></p>
   </section>
 
   <section id="start">
@@ -1104,8 +1105,16 @@
   var voiceBusy = false, voiceNow = null, voicePending = null, voiceFailed = false, voiceGen = 0;
 
   function speakNow(entry){
-    var gen = ++voiceGen, closed = false;
+    var gen = ++voiceGen, closed = false, started = false;
     voiceBusy = true; voiceNow = entry;
+
+    // Момент, когда звук действительно пошёл: по нему показываются картинки,
+    // чтобы ребёнок сперва услышал вопрос, а уже потом увидел, по чему тыкать.
+    function begun(){
+      if(started) return;
+      started = true;
+      if(entry.onstart) try{ entry.onstart(); }catch(e){}
+    }
 
     function finish(){
       if(closed || gen !== voiceGen) return;
@@ -1115,14 +1124,18 @@
       if(next) speakNow(next);
     }
 
-    if(clipsReady(entry.keys) && playClips(entry.keys, finish)) return;
+    if(clipsReady(entry.keys) && playClips(entry.keys, finish)){ begun(); return; }
 
     try{
       var u = new SpeechSynthesisUtterance(entry.text);
       u.lang = "ru-RU"; u.rate = 0.85; u.pitch = 1.2; u.volume = S.voiceVol;
       var v = ruVoice(); if(v) u.voice = v;
       u.onend = finish;
+      u.onstart = begun;
+      // Часть браузеров про onstart молчит — подстрахуемся коротким таймером
+      setTimeout(begun, 350);
       u.onerror = function(ev){
+        begun();
         // interrupted и canceled — это наша же остановка, не поломка
         if(ev && ev.error && !/interrupted|canceled/.test(ev.error)){
           voiceFailed = true;
@@ -1140,7 +1153,7 @@
     }
   }
 
-  function say(text, prio, keys, waited){
+  function say(text, prio, keys, waited, onstart){
     prio = prio || 0;
     text = String(text || "").trim();
     keys = keys ? (typeof keys === "string" ? [keys] : keys) : null;
@@ -1149,12 +1162,12 @@
 
     // Подождём запись до трёх секунд, потом уже скажем синтезатором
     if(keys && !clipsReady(keys) && clipsExpected(keys) && (waited || 0) < 10){
-      setTimeout(function(){ say(text, prio, keys, (waited || 0) + 1); }, 300);
+      setTimeout(function(){ say(text, prio, keys, (waited || 0) + 1, onstart); }, 300);
       return;
     }
     if(!clipsReady(keys) && (!text || !window.speechSynthesis)) return;
 
-    var entry = {text:text, prio:prio, keys:keys, id: keys ? keys.join("+") : text};
+    var entry = {text:text, prio:prio, keys:keys, onstart:onstart, id: keys ? keys.join("+") : text};
     if(voiceBusy){
       if(voiceNow && voiceNow.id === entry.id) return;        // ровно это и говорим
       if(voicePending && voicePending.id === entry.id) return; // уже стоит следующим
@@ -1187,7 +1200,7 @@
   /* ── Round ─────────────────────────────────────────── */
   var target = null, lastTargetId = null, busy = false,
       hintTimer = null, hintAt = 0, askTimer = null, lastWrongSfx = 0,
-      roundTaps = 0, sessionRounds = 0, demoTimer = null, handTimer = null,
+      roundTaps = 0, sessionRounds = 0, demoTimer = null, handTimer = null, revealTimer = null,
       chooserDemoDone = false;
 
   /* ── Показать задачу, а не только произнести ──────────
@@ -1418,7 +1431,9 @@
     row = row.slice(0, 4).sort(function(){ return Math.random() - 0.5; });
 
     stage.textContent = "";
-    row.forEach(function(item, i){
+    // Карточки готовим, но на сцену пока не ставим: пустой экран нечем
+    // опередить, и ребёнок волей-неволей дослушивает вопрос.
+    var cards = row.map(function(item, i){
       var b = document.createElement("button");
       b.className = "item";
       b.style.animationDelay = (i * 0.07) + "s";
@@ -1430,16 +1445,29 @@
       setArt(art, item);
       b.appendChild(art);
       onTap(b, onPick);
-      stage.appendChild(b);
+      return b;
     });
 
     roundTaps = 0;
     jRoundStart(target.id);
     showCue(target);
-    askTimer = setTimeout(function(){ say(pick(ASK) + target.name.toLowerCase() + "?", 1, "q_" + target.id); }, 620);
-    // Первый раунд сессии — обучающий: подсказка вдвое раньше, и если ребёнок
-    // не нажимает ничего, рука показывает, куда. Дальше — обычные 7 секунд.
-    armHint(sessionRounds === 0 ? 3500 : 7000);
+
+    var shown = false;
+    function reveal(){
+      if(shown) return;
+      shown = true;
+      clearTimeout(revealTimer); revealTimer = null;
+      cards.forEach(function(b){ stage.appendChild(b); });
+      // Отсчёт подсказки честно идёт с того мига, когда стало что нажимать
+      armHint(sessionRounds === 0 ? 3500 : 7000);
+    }
+
+    askTimer = setTimeout(function(){
+      say(pick(ASK) + target.name.toLowerCase() + "?", 1, "q_" + target.id, 0, reveal);
+    }, 200);
+    // Голос может быть выключен, не завестись или ждать запись — картинки
+    // всё равно должны появиться, иначе игра встанет на пустом экране.
+    revealTimer = setTimeout(reveal, 1600);
     sessionRounds++;
   }
 
@@ -1465,6 +1493,7 @@
   }
   function clearTimers(){
     clearTimeout(hintTimer); clearTimeout(askTimer); clearTimeout(demoTimer);
+    clearTimeout(revealTimer); revealTimer = null;
     hintTimer = null; hintAt = 0;
     hideHand(); hideCue();
   }
@@ -1518,6 +1547,49 @@
     hum.start(t); hum.stop(t + dur);
   }
 
+  /* Велосипедный звонок. Записи на свободной лицензии найти не вышло —
+     Pixabay на поиске звуков встречает проверкой на робота, — зато звонок
+     отлично собирается руками: это купол, а не струна, поэтому призвуки
+     негармонические, 1 : 1,5 : 2,28 : 3,08. Два удара подряд, как у
+     поворотного звонка: одиночное «дзинь» звучит скорее дверным.          */
+  function bell(){
+    var c = ac(); if(!c) return;
+    var PARTIALS = [[2060, 1], [3090, 0.52], [4700, 0.3], [6340, 0.15]];
+
+    function strike(t0, amp){
+      PARTIALS.forEach(function(pt){
+        var o = c.createOscillator(); o.type = "sine";
+        o.frequency.setValueAtTime(pt[0], t0);
+        // металл после удара чуть «садится» по высоте
+        o.frequency.exponentialRampToValueAtTime(pt[0] * 0.994, t0 + 1.1);
+        var g = c.createGain();
+        // высокие призвуки гаснут заметно быстрее низких — от этого звук
+        // в первый миг звенящий, а на хвосте остаётся чистый тон
+        var decay = 1.15 - pt[1] * 0.55;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(amp * pt[1], t0 + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + decay);
+        o.connect(g); g.connect(bus());
+        o.start(t0); o.stop(t0 + decay + 0.05);
+      });
+
+      // щелчок язычка по куполу: без него звон начинается ниоткуда
+      var len = Math.ceil(c.sampleRate * 0.012);
+      var buf = c.createBuffer(1, len, c.sampleRate);
+      var d = buf.getChannelData(0);
+      for(var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      var src = c.createBufferSource(); src.buffer = buf;
+      var hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 1800;
+      var cg = c.createGain(); cg.gain.value = amp * 0.5;
+      src.connect(hp); hp.connect(cg); cg.connect(bus());
+      src.start(t0);
+    }
+
+    var t = c.currentTime + 0.01;
+    strike(t, 0.2);
+    strike(t + 0.17, 0.15);
+  }
+
   /* Записанные звуки. Файл длинный (39 секунд), и это нормально: обрезать
      его нечем и незачем — играем нужный кусок, задав смещение и длительность.
      Своя огибающая и разгон скорости воспроизведения дают ощущение, что винт
@@ -1535,6 +1607,10 @@
   var SFX_OPTS = {
     heli: {offset:6, dur:2.7, gain:0.5, rateFrom:0.72, rateOver:1}
   };
+
+  // Синтезированные звуки идут вперёд записей: у велосипеда в наборе лежал
+  // шорох цепи, а ребёнку нужен звонок — его и слышно.
+  var SFX_SYNTH = { bike: bell };
 
   var sfxBuffers = {}, sfxAsked = {}, sfxError = "";
 
@@ -1629,6 +1705,7 @@
   }
 
   function itemSound(item){
+    if(SFX_SYNTH[item.id]) return SFX_SYNTH[item.id]();
     var o = SFX_OPTS[item.id] || {};
     if(playSample(item.id, o.offset, o.dur, o)) return;
     loadSample(item.id);                       // не успел загрузиться — к следующему разу успеет
@@ -1653,6 +1730,10 @@
 
   function onPick(el){
     if(busy) return;
+    // Палец мог опуститься на карточку прошлого раунда: обработчик срабатывает
+    // на 80 мс позже, и к этому времени на сцене уже другая пара. Засчитывать
+    // такой тык новой паре нечестно — анимировать нечего, карточки нет.
+    if(!el.parentNode) return;
     roundTaps++;
     hideHand();
     var item = BY_ID[el.dataset.id];
@@ -1674,7 +1755,12 @@
     }
 
     busy = true; clearTimers();
-    stage.querySelectorAll(".item").forEach(function(o){ o.classList.remove("hint"); });
+    // Лишние карточки убираем сразу: ребёнок смотрит на то, что ожило,
+    // и соседний предмет в этот момент только отвлекает и зовёт нажать.
+    Array.prototype.forEach.call(stage.querySelectorAll(".item"), function(o){
+      o.classList.remove("hint");
+      if(o !== el) o.parentNode.removeChild(o);
+    });
     SFX.right();
     confetti(el);
     // «Да!» записано с перегрузом — убрано из ротации до перезаписи.
@@ -2096,7 +2182,25 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-20";
+  var VERSION = "proto-21";
+  /* Что изменилось в этой версии — текст живёт рядом с номером, а не в вёрстке,
+     чтобы номер и описание нельзя было развести по разным местам. Показывается
+     в настройках и уезжает вместе с отзывом. */
+  var VERSION_NOTE = [
+    "Вопрос звучит первым, а картинки появляются уже под голос: раньше они были на экране раньше вопроса, и ребёнок бил по ним не слушая.",
+    "После верного нажатия вторая картинка исчезает сразу — ничто не отвлекает от ожившего предмета.",
+    "Тычок по карточке, которая уже ушла со сцены, не засчитывается следующей паре.",
+    "У велосипеда звонок вместо шороха цепи."
+  ];
+  (function(){
+    var el = $("verNote");
+    if(!el) return;
+    el.innerHTML = "";
+    var head = document.createElement("strong");
+    head.textContent = "Версия " + VERSION + ". ";
+    el.appendChild(head);
+    el.appendChild(document.createTextNode(VERSION_NOTE.join(" ")));
+  })();
 
   function deviceLine(){
     var ua = navigator.userAgent;
@@ -2140,7 +2244,7 @@
       style: S.style,
       collected: S.collected.length,
       device: deviceLine(),
-      version: VERSION,
+      version: VERSION + " — " + VERSION_NOTE.join(" "),
       website: $("fbWebsite").value
     };
     if(!FEEDBACK_ENDPOINT) return shareViaTelegram(payload);
