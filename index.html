@@ -375,6 +375,8 @@
   /* ─── Shelf ─────────────────────────────────────────── */
   .sheet{position:absolute;inset:0;z-index:40;background:var(--paper);overflow-y:auto;padding:0 20px;padding-block:calc(18px + env(safe-area-inset-top,0px)) 28px;}
   .sheet[hidden]{display:none!important;}
+  /* Выбор темы открывается с входного экрана, а он лежит выше прочих листов */
+  #themes{z-index:70;}
   .sheetHead{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:1100px;margin:0 auto 18px;}
   .sheetHead h2{font-family:"Baloo 2",sans-serif;font-size:clamp(24px,4.4vmin,38px);margin:0;text-wrap:balance;}
   .closeBtn{background:var(--ink);color:var(--paper);border-radius:999px;padding:12px 22px;font-weight:700;font-size:17px;}
@@ -438,6 +440,7 @@
   .lrow{display:grid;grid-template-columns:38px 1fr auto;gap:12px;align-items:center;
     background:#fff;border-radius:12px;padding:9px 13px;margin-bottom:6px;}
   .lrow .a{font-size:26px;line-height:1;}
+  .lrow .sub{display:block;font-size:12.5px;color:var(--ink-soft,#6C6559);margin-top:2px;}
   .lrow .a img{width:1.4em;height:1.4em;object-fit:contain;display:block;}
   .lrow .n{display:block;font-size:15.5px;font-weight:600;}
   .lrow .bar{display:block;height:7px;border-radius:99px;background:var(--paper-edge);margin-top:5px;overflow:hidden;}
@@ -473,6 +476,13 @@
     box-shadow:0 5px 0 var(--amber-deep),0 12px 24px rgba(199,118,26,.3);
   }
   .bigBtn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--amber-deep);}
+  .ghostBtn{
+    justify-self:center;margin-top:12px;background:transparent;color:var(--amber-deep);
+    border-radius:999px;padding:12px 28px;font-family:"Baloo 2",sans-serif;font-weight:700;
+    font-size:clamp(15px,2.3vmin,19px);box-shadow:inset 0 0 0 2px var(--amber-deep);
+  }
+  .ghostBtn:active{transform:translateY(2px);}
+  .startNote{margin:10px 0 0;font-size:14px;color:var(--ink-soft,#6C6559);}
   .tag{
     justify-self:center;font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
     color:var(--amber-deep);background:#FFF1DC;border-radius:999px;padding:6px 14px;
@@ -523,6 +533,17 @@
       <button class="closeBtn" data-close="shelf">Играть</button>
     </div>
     <div id="shelfGrid"></div>
+  </section>
+
+  <section class="sheet" id="themes" hidden>
+    <div class="sheetHead">
+      <h2>Тема игры</h2>
+      <button class="closeBtn" data-close="themes">Назад</button>
+    </div>
+    <div class="group">
+      <p class="lbl">Ребёнку будут показываться только предметы выбранной темы — все сразу, не дожидаясь коробок</p>
+      <div class="segs" id="themeList"></div>
+    </div>
   </section>
 
   <section class="sheet" id="learned" hidden>
@@ -601,6 +622,7 @@
       <div class="segs">
         <button class="seg" id="jOpen"><strong>Открыть разбор</strong><span>Что узнаёт, что путает, к чему тянется первым.</span></button>
         <button class="seg" id="jDump"><strong>Скачать журнал</strong><span>Файлом, для разбора. Хранится только на этом устройстве.</span></button>
+        <button class="seg" id="themeOpen"><strong>Тема игры</strong><span>Показывать ребёнку только предметы выбранной темы.</span></button>
       </div>
     </div>
 
@@ -626,6 +648,8 @@
       <p>Сначала ребёнок свободно выбирает, что ему нравится: предметы оживают, называются и улетают. Порядок выбора запоминается — и дальше игра спрашивает про них парами, начиная с выбранных последними. Когда пройдены все пары, падает коробка: четыре стука, и новый предмет переезжает на полку и в игру.</p>
       <p>Планшет лучше положить горизонтально. Со звуком.</p>
       <button class="bigBtn" id="startBtn">Играть</button>
+      <button class="ghostBtn" id="themeBtn">Играть по теме</button>
+      <p class="startNote" id="themeNow" hidden></p>
     </div>
   </section>
 </div>
@@ -753,9 +777,34 @@
     voice: true,          // производное от voiceVol: голос на нуле — значит выключен
     voiceVol: 1,
     sfxVol: 1,
-    cue: "auto"   // картинка вопроса: "auto" — только когда голоса нет, "always" — всегда
+    cue: "auto",  // картинка вопроса: "auto" — только когда голоса нет, "always" — всегда
+    theme: null   // выбранная тема; null — играем всем набором
   };
   var KEY = "naidi-i-otkroy-v1";
+
+  /* ── Темы ───────────────────────────────────────────
+     Состав темы берётся из поля cat у самих предметов — так список тем и
+     список предметов не могут разъехаться: добавил предмет с темой, и он
+     сразу в ней. Здесь только порядок и человеческие названия.
+
+     Названия и окончательный состав пришлёт Дана; пока стоят рабочие,
+     выведенные из нынешней разметки каталога.                            */
+  var THEMES = [
+    {id:"farm",  name:"Животные"},
+    {id:"city",  name:"Машины"},
+    {id:"room",  name:"Дома"},
+    {id:"yard",  name:"Во дворе"},
+    {id:"sea",   name:"Море"},
+    {id:"space", name:"Небо"}
+  ];
+  function themeName(id){
+    for(var i = 0; i < THEMES.length; i++) if(THEMES[i].id === id) return THEMES[i].name;
+    return null;
+  }
+  // Предметы темы во всём каталоге — для подсчётов на экране выбора
+  function themeAll(id){
+    return ITEMS.filter(function(it){ return it.cat === id; });
+  }
 
   /* ── Журнал ─────────────────────────────────────────
      Что ребёнок выбирает сам, что уже узнаёт с первого раза и что с чем
@@ -782,7 +831,7 @@
   function jSave(){ try{ localStorage.setItem(JKEY, JSON.stringify(J)); }catch(e){} }
 
   function jItem(id){
-    if(!J.items[id]) J.items[id] = {asked:0, firstTry:0, wrong:0, hinted:0, msSum:0, picked:0, first:0, confused:{}};
+    if(!J.items[id]) J.items[id] = {asked:0, done:0, firstTry:0, wrong:0, hinted:0, msSum:0, picked:0, first:0, confused:{}};
     return J.items[id];
   }
 
@@ -833,6 +882,10 @@
   function jRight(targetId){
     jTouch();
     var t = jItem(targetId);
+    // Доля считается от отвеченных, а не от начатых: раунд, брошенный на
+    // полпути (ушли с экрана, закрыли страницу), иначе уходил бы в знаменатель
+    // и предмет выглядел бы трудным, хотя ребёнок на него просто не отвечал.
+    t.done = (t.done || 0) + 1;
     if(!jRoundWrong) t.firstTry++;
     if(jRoundHint) t.hinted++;
     t.msSum += Math.min(Date.now() - jRoundAt, 60000);
@@ -840,13 +893,17 @@
   }
   function jBox(){ jTouch(); jSess.boxes++; J.totals.boxes++; jSave(); }
 
+  // Сколько раз ребёнок действительно ответил. У журналов, записанных до
+  // появления счётчика, поля нет — для них остаётся прежний знаменатель.
+  function jDone(it){ return it.done != null ? it.done : it.asked; }
+
   function jName(id){ return BY_ID[id] ? BY_ID[id].name : id; }
 
   function jSummary(){
     var ids = Object.keys(J.items), i;
-    var rate = function(id){ var it = J.items[id]; return it.asked ? it.firstTry / it.asked : 0; };
-    var known = ids.filter(function(id){ return J.items[id].asked >= 3 && rate(id) >= 0.7; });
-    var hard  = ids.filter(function(id){ return J.items[id].asked >= 3 && rate(id) < 0.4; });
+    var rate = function(id){ var it = J.items[id]; return jDone(it) ? it.firstTry / jDone(it) : 0; };
+    var known = ids.filter(function(id){ return jDone(J.items[id]) >= 3 && rate(id) >= 0.7; });
+    var hard  = ids.filter(function(id){ return jDone(J.items[id]) >= 3 && rate(id) < 0.4; });
     var fav   = ids.filter(function(id){ return J.items[id].first > 0; })
                    .sort(function(a, b){ return J.items[b].first - J.items[a].first; }).slice(0, 5);
     var pairs = [];
@@ -899,6 +956,8 @@
       if(typeof p.sfxVol === "number") S.sfxVol = Math.min(1, Math.max(0, p.sfxVol));
       S.voice = S.voiceVol > 0.02;
       if(p.cue === "auto" || p.cue === "always") S.cue = p.cue;
+      // тема могла исчезнуть из каталога между версиями — тогда играем всем
+      S.theme = themeName(p.theme) ? p.theme : null;
     }catch(e){}
   }
 
@@ -1282,6 +1341,19 @@
      Экран к этому моменту уже видим, иначе размеров у него нет. */
   var MIN_TARGET_PX = 128, MAX_TARGET_PX = 300;
 
+  /* Из чего игра берёт предметы. Без темы — всё собранное; с темой —
+     только её часть. Одна точка на всю игру, чтобы фильтр нельзя было
+     забыть применить в одном из мест. */
+  function poolIds(){
+    if(!S.theme) return S.collected.slice();
+    // Тему выбрал родитель — он и решил, что сегодня показывать. Ждать,
+    // пока предметы темы откроются из коробок, не заставляем: иначе выбор
+    // темы в начале игры не менял бы ничего — открыто всего шесть предметов
+    // из тридцати двух, и в любой теме их один-два.
+    var ids = themeAll(S.theme).map(function(i){ return i.id; });
+    return ids.length >= 2 ? ids : S.collected.slice();
+  }
+
   function chooserLayout(){
     var cs = getComputedStyle(chooser);
     var w = chooser.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
@@ -1293,7 +1365,7 @@
     if(!(h > 50)) h = Math.max(240, window.innerHeight - 100);
     var gap = Math.max(12, Math.round(Math.min(w, h) * 0.05));
 
-    for(var n = Math.min(8, S.collected.length); n >= 2; n--){
+    for(var n = Math.min(8, poolIds().length); n >= 2; n--){
       var best = null;
       for(var cols = 1; cols <= n; cols++){
         var rows = Math.ceil(n / cols);
@@ -1311,13 +1383,17 @@
   }
 
   function chooserRow(n){
-    var all = S.collected.map(function(id){ return BY_ID[id]; });
+    var pool = poolIds();
+    var all = pool.map(function(id){ return BY_ID[id]; });
     all.sort(function(){ return Math.random() - 0.5; });
     var row = all.slice(0, n);
     // только что открытый предмет обязан оказаться на экране: ребёнок должен
-    // встретить свою награду сразу, а не через несколько сессий
+    // встретить свою награду сразу, а не через несколько сессий.
+    // Но если он не из выбранной темы, подменять им чужой предмет нельзя.
     var fresh = S.collected[S.collected.length - 1];
-    if(row.every(function(i){ return i.id !== fresh; })) row[row.length - 1] = BY_ID[fresh];
+    if(pool.indexOf(fresh) !== -1 && row.every(function(i){ return i.id !== fresh; })){
+      row[row.length - 1] = BY_ID[fresh];
+    }
     return row;
   }
 
@@ -1837,7 +1913,14 @@
 
   function nextLocked(){
     var locked = ITEMS.filter(function(i){ return S.collected.indexOf(i.id) === -1; });
-    return locked.length ? locked[0] : null;
+    if(!locked.length) return null;
+    // При выбранной теме награда приходит из неё же: иначе ребёнок получает
+    // предмет, которого в этой игре не увидит.
+    if(S.theme){
+      var mine = locked.filter(function(i){ return i.cat === S.theme; });
+      if(mine.length) return mine[0];
+    }
+    return locked[0];
   }
 
   function openReward(){
@@ -1938,6 +2021,48 @@
   }
 
   /* ── Sheets ────────────────────────────────────────── */
+  /* ── Выбор темы ─────────────────────────────────────
+     Родительский экран: тема выбирается до игры и держится между
+     запусками. Ребёнок её не видит — он видит только свои предметы. */
+  function buildThemes(){
+    var list = $("themeList");
+    list.textContent = "";
+
+    function row(id, name, note){
+      var b = document.createElement("button");
+      b.className = "seg" + (S.theme === id ? " on" : "");
+      var t = document.createElement("strong"); t.textContent = name;
+      var sp = document.createElement("span"); sp.textContent = note;
+      b.appendChild(t); b.appendChild(sp);
+      b.addEventListener("click", function(){
+        S.theme = id; save(); buildThemes(); syncThemeLine();
+      });
+      list.appendChild(b);
+    }
+
+    row(null, "Все предметы",
+        "Как обычно: только открытое, " + S.collected.length + " из " + ITEMS.length +
+        ". Новое приходит из коробки.");
+    THEMES.forEach(function(t){
+      var all = themeAll(t.id);
+      if(!all.length) return;
+      var names = all.slice(0, 4).map(function(i){ return i.name.toLowerCase(); }).join(", ");
+      if(all.length > 4) names += " и ещё " + (all.length - 4);
+      var note = all.length + " " + plural(all.length, "предмет", "предмета", "предметов") +
+                 ": " + names;
+      // Пара складывается из двух предметов: с одним играть нечем.
+      if(all.length < 2) note = "в теме один предмет — играть нечем";
+      row(t.id, t.name, note);
+    });
+  }
+
+  function syncThemeLine(){
+    var name = themeName(S.theme), el = $("themeNow");
+    el.hidden = !name;
+    if(name) el.textContent = "Тема: " + name;
+    $("themeBtn").textContent = name ? "Сменить тему" : "Играть по теме";
+  }
+
   function openSheet(el){
     clearTimers();
     stopSpeech();
@@ -1949,6 +2074,13 @@
       // разбор открывается из настроек — туда и возвращаемся,
       // а не выбрасываем родителя обратно в игру
       if(b.dataset.close === "learned"){ showJournal(); settings.hidden = false; return; }
+      // Тему открывают и со входа, и из настроек: возвращаем в настройки
+      // только во втором случае, иначе родитель окажется там без спроса.
+      if(b.dataset.close === "themes"){
+        syncThemeLine();
+        if(themeFromSettings){ themeFromSettings = false; settings.hidden = false; }
+        return;
+      }
       buildRound();
     });
   });
@@ -2024,6 +2156,15 @@
      «он чему-то научился?». Поэтому слова, а не проценты, и отдельно
      вынесено то, что ребёнок путает: это и есть место, где он сейчас
      учится, а не ошибается. */
+  // «1 раз, 2 раза, 5 раз» — без этого статистика читается как машинная
+  function plural(k, one, few, many){
+    var a = Math.abs(k) % 100, b = a % 10;
+    if(a > 10 && a < 20) return many;
+    if(b > 1 && b < 5) return few;
+    if(b === 1) return one;
+    return many;
+  }
+
   function buildLearned(){
     var box = $("learnedBody");
     box.textContent = "";
@@ -2062,16 +2203,45 @@
     }
 
     // разбор по словам: сначала то, что уже получается
-    var asked = Object.keys(J.items).filter(function(id){ return J.items[id].asked > 0; });
-    var rate = function(id){ var i = J.items[id]; return i.asked ? i.firstTry / i.asked : 0; };
+    var asked = Object.keys(J.items).filter(function(id){ return jDone(J.items[id]) > 0; });
+    var rate = function(id){ var i = J.items[id]; return jDone(i) ? i.firstTry / jDone(i) : 0; };
     asked.sort(function(a, b){ return rate(b) - rate(a); });
 
     var groups = [
-      ["Узнаёт уверенно", function(id){ return J.items[id].asked >= 3 && rate(id) >= 0.7; }],
-      ["Учится", function(id){ return J.items[id].asked >= 3 && rate(id) >= 0.4 && rate(id) < 0.7; }],
-      ["Пока трудно", function(id){ return J.items[id].asked >= 3 && rate(id) < 0.4; }],
-      ["Спрашивали мало — рано судить", function(id){ return J.items[id].asked < 3; }]
+      ["Узнаёт уверенно", function(id){ return jDone(J.items[id]) >= 3 && rate(id) >= 0.7; }],
+      ["Учится", function(id){ return jDone(J.items[id]) >= 3 && rate(id) >= 0.4 && rate(id) < 0.7; }],
+      ["Пока трудно", function(id){ return jDone(J.items[id]) >= 3 && rate(id) < 0.4; }],
+      ["Спрашивали мало — рано судить", function(id){ return jDone(J.items[id]) < 3; }]
     ];
+
+    // Сводка по темам: по ней видно, что животных ребёнок уже знает,
+    // а технику ещё нет — это и есть повод включить тему в настройках.
+    var themeRows = THEMES.map(function(t){
+      var ids = asked.filter(function(id){ return BY_ID[id] && BY_ID[id].cat === t.id; });
+      var tot = ids.reduce(function(a, id){ return a + jDone(J.items[id]); }, 0);
+      var ok  = ids.reduce(function(a, id){ return a + J.items[id].firstTry; }, 0);
+      var bad = ids.reduce(function(a, id){ return a + J.items[id].wrong; }, 0);
+      return {t:t, items:ids.length, tot:tot, ok:ok, bad:bad};
+    }).filter(function(r){ return r.tot > 0; });
+
+    if(themeRows.length > 1){
+      title("По темам");
+      themeRows.sort(function(a, b){ return (b.ok / b.tot) - (a.ok / a.tot); });
+      themeRows.forEach(function(r){
+        var row = document.createElement("div");
+        row.className = "lrow";
+        row.innerHTML = '<span class="a"></span><span><span class="n"></span>' +
+                        '<span class="sub"></span><span class="bar"><i></i></span></span>' +
+                        '<span class="v"></span>';
+        row.querySelector(".a").textContent = "";
+        row.querySelector(".n").textContent = r.t.name;
+        row.querySelector(".sub").textContent =
+          "предметов " + r.items + " · ошибок " + r.bad;
+        row.querySelector(".bar i").style.width = Math.round(r.ok / r.tot * 100) + "%";
+        row.querySelector(".v").textContent = r.ok + " из " + r.tot;
+        box.appendChild(row);
+      });
+    }
 
     groups.forEach(function(g){
       var list = asked.filter(g[1]);
@@ -2087,7 +2257,20 @@
         else row.querySelector(".a").textContent = "•";
         row.querySelector(".n").textContent = item ? item.name : id;
         row.querySelector(".bar i").style.width = Math.round(rate(id) * 100) + "%";
-        row.querySelector(".v").textContent = it.firstTry + " из " + it.asked;
+
+        row.querySelector(".v").textContent = it.firstTry + " из " + jDone(it);
+
+        // Подробности словами: сколько раз спрашивали, сколько раз ребёнок
+        // ткнул мимо и сколько раз ему понадобилась подсказка. Доля вверху
+        // отвечает «узнаёт ли», эта строка — «насколько тяжело даётся».
+        var parts = ["отвечал " + jDone(it) + " " + plural(jDone(it), "раз", "раза", "раз")];
+        parts.push(it.wrong ? "ошибался " + it.wrong + " " + plural(it.wrong, "раз", "раза", "раз")
+                            : "ни разу не ошибся");
+        if(it.hinted) parts.push("подсказка " + it.hinted);
+        var sub = document.createElement("span");
+        sub.className = "sub";
+        sub.textContent = parts.join(" · ");
+        row.querySelector(".n").parentNode.insertBefore(sub, row.querySelector(".bar"));
         box.appendChild(row);
       });
     });
@@ -2138,6 +2321,18 @@
 
   $("jOpen").addEventListener("click", function(){ buildLearned(); openSheet(learned); });
 
+  var themeFromSettings = false;
+  $("themeBtn").addEventListener("click", function(){
+    themeFromSettings = false;
+    buildThemes(); $("themes").hidden = false;
+  });
+  $("themeOpen").addEventListener("click", function(){
+    themeFromSettings = true;
+    settings.hidden = true;
+    buildThemes(); $("themes").hidden = false;
+  });
+  syncThemeLine();
+
   $("jDump").addEventListener("click", function(){
     var blob = new Blob([JSON.stringify(J, null, 2)], {type:"application/json"});
     var a = document.createElement("a");
@@ -2185,7 +2380,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-21";
+  var VERSION = "proto-22";
   /* Что изменилось в этой версии — текст живёт рядом с номером, а не в вёрстке,
      чтобы номер и описание нельзя было развести по разным местам. Показывается
      в настройках и уезжает вместе с отзывом. */
@@ -2193,7 +2388,9 @@
     "Вопрос звучит первым, а картинки появляются уже под голос: раньше они были на экране раньше вопроса, и ребёнок бил по ним не слушая.",
     "После верного нажатия вторая картинка исчезает сразу — ничто не отвлекает от ожившего предмета.",
     "Тычок по карточке, которая уже ушла со сцены, не засчитывается следующей паре.",
-    "Короткие звуки больше не глохнут: четверть секунды плавного нарастания съедала удар, и велосипедный звонок звучал гудением вместо «дзинь»."
+    "Короткие звуки больше не глохнут: четверть секунды плавного нарастания съедала удар, и велосипедный звонок звучал гудением вместо «дзинь».",
+    "На входе появилась кнопка «Играть по теме»: родитель выбирает тему, и ребёнку показываются только её предметы — все сразу, не дожидаясь коробок.",
+    "В разборе видно, сколько раз ребёнок отвечал, сколько раз ошибался и понадобилась ли подсказка, плюс сводка по темам. Доля считается от отвеченных раундов, брошенные на полпути больше не портят статистику."
   ];
   (function(){
     var el = $("verNote");
