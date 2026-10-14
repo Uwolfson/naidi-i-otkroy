@@ -236,11 +236,26 @@ function authorized(request, env) {
   return Boolean(env.READ_KEY) && auth === "Bearer " + env.READ_KEY;
 }
 
+/* Для вложений запоминаем file_id: без него присланное фото не забрать —
+   бот не умеет читать историю чата, а в журнале оставалась одна пометка
+   «[photo]». Для фото берём самый крупный размер, он идёт последним. */
 function describe(msg) {
   const kinds = ["photo", "video", "voice", "audio", "document", "sticker",
     "animation", "video_note", "new_chat_members", "left_chat_member"];
   const kind = kinds.find((k) => msg[k]);
-  return "[" + (kind || "служебное") + "]";
+  if (!kind) return "[служебное]";
+
+  let file = null;
+  if (kind === "photo") {
+    const sizes = msg.photo || [];
+    file = sizes.length ? sizes[sizes.length - 1] : null;
+  } else if (typeof msg[kind] === "object" && !Array.isArray(msg[kind])) {
+    file = msg[kind];
+  }
+  if (!file || !file.file_id) return "[" + kind + "]";
+
+  const name = file.file_name ? " " + clean(file.file_name, 120) : "";
+  return "[" + kind + name + "] file_id=" + file.file_id;
 }
 
 function clean(value, max) {

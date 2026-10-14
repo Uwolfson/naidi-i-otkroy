@@ -49,6 +49,13 @@
 - **`Unauthorized`** — неверный `BOT_TOKEN`.
 - **`message thread not found`** — неверный `TOPIC_ID` или темы в группе выключены.
 
+## Забрать присланный файл
+
+Для вложений журнал хранит `file_id`. По нему файл скачивается двумя
+запросами к Telegram — `getFile`, затем `https://api.telegram.org/file/bot<токен>/<путь>`.
+Токен нужен именно бота, он в секретах Cloudflare; локально он может лежать
+в `~/.tg_gamehelper_token`.
+
 ## Сказать в группу от имени бота
 
 `POST /say` с тем же ключом, что и журнал, отправляет в группу обычное
@@ -56,7 +63,8 @@
 ботом, а не с личного аккаунта.
 
 ```bash
-K=$(tr -d '
+K=$(tr -d '
+
 ' < feedback-worker/.read-key)
 curl -s -X POST -H "Authorization: Bearer $K" -H "Content-Type: application/json"   -d '{"text":"Привет из воркера"}'   https://naidi-feedback.wolfson-u.workers.dev/say
 ```
