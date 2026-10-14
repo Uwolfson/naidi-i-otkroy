@@ -36,6 +36,7 @@ export default {
     const path = new URL(request.url).pathname;
     if (path === "/telegram") return fromTelegram(request, env);
     if (path === "/messages") return listMessages(request, env);
+    if (path === "/say") return say(request, env);
     if (path === "/setup") return setup(request, env);
     return fromGame(request, env);
   },
@@ -156,6 +157,43 @@ async function listMessages(request, env) {
     list.keys.map((k) => env.MESSAGES.get(k.name, "json"))
   );
   return json(items.filter(Boolean));
+}
+
+/* Сказать в группу от имени бота обычным сообщением, без обёртки «Отзыв из
+   игры». Нужно, чтобы отвечать Дане ботом, а не с личного аккаунта Юрия.
+   Доступ по тому же READ_KEY, что и журнал: токен бота остаётся в секретах
+   Cloudflare и наружу не выходит.                                        */
+async function say(request, env) {
+  if (!authorized(request, env)) return reply("Нет доступа", 403);
+  if (request.method !== "POST") return reply("Нужен POST", 405);
+
+  let data;
+  try {
+    data = await request.json();
+  } catch {
+    return reply("Жду JSON вида {\"text\": \"...\"}", 400);
+  }
+  const text = clean(data.text, MAX_TEXT);
+  if (!text) return reply("Пустой текст", 400);
+
+  const message = { chat_id: env.CHAT_ID, text, disable_web_page_preview: true };
+  if (env.TOPIC_ID) message.message_thread_id = Number(env.TOPIC_ID);
+
+  const tg = await telegram(env, "sendMessage", message);
+  if (!tg.ok || !tg.body?.ok) {
+    return reply("Telegram: " + (tg.body?.description || tg.status), 502);
+  }
+  // Свои сообщения бот обратно не получает — кладём в журнал сами,
+  // иначе в нём будет видна только половина разговора.
+  const sent = tg.body.result;
+  await remember(env, {
+    id: sent.message_id,
+    date: sent.date,
+    from: "бот",
+    kind: "say",
+    text,
+  });
+  return json({ ok: true, message_id: sent.message_id });
 }
 
 async function setup(request, env) {
