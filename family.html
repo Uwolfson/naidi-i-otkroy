@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Студия — голоса семьи</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#F4F2EC; --surface:#fff; --ink:#2B2822; --ink-soft:#6C6559;
+    --rule:#E3DDCF; --teal:#2F6E5E; --amber:#C77A18; --warn:#A24B3C;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 "Golos Text","Segoe UI",system-ui,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;padding:24px 18px 120px;}
+  h1{font-size:25px;margin:0 0 8px;}
+  .lead{color:var(--ink-soft);font-size:14.5px;max-width:70ch;margin:0 0 10px;}
+  .lead b{color:var(--ink);}
+  .card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;
+    padding:14px;margin:12px 0;}
+  .who{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;}
+  .nm{font-weight:600;font-size:17px;}
+  .ph{width:100%;font:inherit;font-size:15px;padding:8px 10px;margin-top:6px;
+    border:1px solid var(--rule);border-radius:9px;background:#fff;}
+  .ph:focus{outline:none;border-color:var(--amber);}
+  .state{font-size:13px;color:var(--ink-faint,#9A9284);margin-top:6px;}
+  .state.ok{color:var(--teal);}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  button{font:inherit;border:0;border-radius:999px;padding:9px 16px;font-size:14.5px;
+    cursor:pointer;background:#F3F0E8;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule);}
+  button:disabled{opacity:.45;cursor:default;}
+  button.go{background:var(--teal);color:#fff;box-shadow:none;}
+  button.rec{background:var(--warn);color:#fff;box-shadow:none;}
+  .bar{height:10px;border-radius:999px;background:#EDE7D9;overflow:hidden;margin:10px 0;}
+  .bar i{display:block;height:100%;width:0;background:var(--teal);transition:width .08s linear;}
+  .err{color:var(--warn);}
+  .foot{position:fixed;left:0;right:0;bottom:0;background:rgba(244,242,236,.97);
+    border-top:1px solid var(--rule);padding:12px 18px;display:flex;gap:10px;
+    align-items:center;justify-content:center;flex-wrap:wrap;}
+  select{font:inherit;font-size:14px;padding:7px 10px;border-radius:9px;border:1px solid var(--rule);}
+  .tip{font-size:13.5px;color:var(--ink-soft);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Голоса семьи</h1>
+  <p class="lead">Каждый записывает свою фразу своим голосом. В игре ребёнок увидит фотографию и услышит именно этого человека.</p>
+  <p class="lead"><b>Записи остаются на этом устройстве.</b> Никуда не отправляются и никуда не выкладываются: лежат в памяти браузера, пока вы сами не нажмёте «Скачать всё». Страница открыта по общей ссылке, но записи по ней недоступны — они не на сервере.</p>
+  <p class="lead"><b>Как писать.</b> Тихая комната, телефон или гарнитура сантиметрах в двадцати ото рта, обычная домашняя интонация — не диктором. Фразу можно переписывать сколько угодно, сохраняется последняя. Шум улицы и эхо пустой комнаты потом не убрать, лучше выбрать место поспокойнее.</p>
+
+  <div class="card">
+    <div class="row">
+      <button id="micBtn" class="go">Включить микрофон</button>
+      <select id="micList" hidden></select>
+    </div>
+    <div class="bar"><i id="meter"></i></div>
+    <div class="state" id="micNow">Микрофон не включён.</div>
+    <div class="state" id="hint"></div>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<div class="foot">
+  <button class="go" id="dump">Скачать всё</button>
+  <button id="wipe">Стереть все записи</button>
+  <span class="tip" id="tip"></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* Состав семьи прислала Дана. Фразы можно править прямо здесь: у кого-то
+     она уже есть, остальным допишут при записи. */
+  var PEOPLE = [
+    ["mama",         "Мама",               "Мой малыш, малыш"],
+    ["mamochka",     "Мамочка",            ""],
+    ["yura",         "Юра",                "Пойдём играть"],
+    ["babushka",     "Бабушка",            ""],
+    ["pra_galya",    "Прабабушка Галя",    ""],
+    ["pra_pasha",    "Прадедушка Паша",    ""],
+    ["baba_zhenya",  "Бабушка Женя",       ""],
+    ["ded_vilis",    "Дедушка Вилис",      ""],
+    ["dyadya_dima",  "Дядя Дима",          ""],
+    ["dyadya_lesha", "Дядя Лёша",          ""],
+    ["ded_valera",   "Дедушка Валера",     ""],
+    ["ded_vladimir", "Дедушка Владимир",   ""]
+  ];
+  var PKEY = "naidi-family-phrases";
+  var phrases = {};
+  try{ phrases = JSON.parse(localStorage.getItem(PKEY) || "{}") || {}; }catch(e){ phrases = {}; }
+  PEOPLE.forEach(function(p){ if(phrases[p[0]] === undefined) phrases[p[0]] = p[2]; });
+
+  /* ── Хранилище: сырой звук в IndexedDB ──────────────
+     В localStorage записи не влезут, а держать их только в памяти нельзя —
+     обновили страницу и всё пропало. */
+  var db = null;
+  function openDb(){
+    return new Promise(function(res){
+      var rq = indexedDB.open("naidi-family", 1);
+      rq.onupgradeneeded = function(){ rq.result.createObjectStore("takes"); };
+      rq.onsuccess = function(){ db = rq.result; res(db); };
+      rq.onerror = function(){ res(null); };
+    });
+  }
+  function put(id, rec){
+    return new Promise(function(res){
+      if(!db) return res(false);
+      var t = db.transaction("takes", "readwrite");
+      t.objectStore("takes").put(rec, id);
+      t.oncomplete = function(){ res(true); };
+      t.onerror = function(){ res(false); };
+    });
+  }
+  function get(id){
+    return new Promise(function(res){
+      if(!db) return res(null);
+      var r = db.transaction("takes", "readonly").objectStore("takes").get(id);
+      r.onsuccess = function(){ res(r.result || null); };
+      r.onerror = function(){ res(null); };
+    });
+  }
+  function wipeAll(){
+    return new Promise(function(res){
+      if(!db) return res();
+      var t = db.transaction("takes", "readwrite");
+      t.objectStore("takes").clear();
+      t.oncomplete = function(){ res(); };
+    });
+  }
+
+  /* ── Микрофон ───────────────────────────────────── */
+  var ctx = null, stream = null, srcNode = null, proc = null, sink = null;
+  var recording = false, buffers = [], liveLevel = 0, curId = null;
+  var MIC_KEY = "naidi-family-mic";
+
+  function micFailed(e){
+    var n = e && e.name;
+    $("hint").innerHTML = '<span class="err">' + (
+      n === "NotAllowedError" ? "Браузер не дал доступ к микрофону. Разрешите его в адресной строке и обновите страницу." :
+      n === "NotFoundError"   ? "Микрофон не найден." :
+      n === "NotReadableError"? "Микрофон занят другой программой — закройте Zoom, Skype, Telegram." :
+      "Не удалось включить микрофон" + (n ? " (" + n + ")" : "") + "."
+    ) + '</span>';
+    return false;
+  }
+
+  async function listMics(){
+    try{
+      var all = await navigator.mediaDevices.enumerateDevices();
+      var ins = all.filter(function(d){ return d.kind === "audioinput"; });
+      if(ins.length < 2) return;
+      var sel = $("micList");
+      sel.hidden = false; sel.textContent = "";
+      ins.forEach(function(d, i){
+        var o = document.createElement("option");
+        o.value = d.deviceId; o.textContent = d.label || ("микрофон " + (i + 1));
+        sel.appendChild(o);
+      });
+      var saved = localStorage.getItem(MIC_KEY);
+      if(saved) sel.value = saved;
+      sel.onchange = function(){ localStorage.setItem(MIC_KEY, sel.value); initMic(sel.value); };
+    }catch(e){}
+  }
+
+  async function initMic(deviceId){
+    var want = {channelCount:1, echoCancellation:false, noiseSuppression:false, autoGainControl:false};
+    if(deviceId) want.deviceId = {exact:deviceId};
+    if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({audio:want});
+    }catch(e){
+      // сохранённого микрофона может уже не быть — берём любой
+      if(deviceId){
+        localStorage.removeItem(MIC_KEY); delete want.deviceId;
+        try{ stream = await navigator.mediaDevices.getUserMedia({audio:want}); }
+        catch(e2){ return micFailed(e2); }
+      } else { return micFailed(e); }
+    }
+    await listMics();
+    var track = stream.getAudioTracks()[0];
+    var name = track && track.label ? track.label : "микрофон";
+    var set = track && track.getSettings ? track.getSettings() : {};
+    /* Блютус-гарнитура, включив микрофон, уходит в телефонный режим: полоса
+       режется до ~4 кГц и звук глохнет. Настройками не лечится. */
+    var phone = (set.sampleRate && set.sampleRate <= 24000) || /bluetooth|hands.?free/i.test(name);
+    $("micNow").textContent = "Пишем через: " + name +
+      (set.sampleRate ? " · " + Math.round(set.sampleRate/1000) + " кГц" : "");
+    if(phone){
+      $("hint").innerHTML = '<span class="err">Это телефонный режим блютуса: звук узкий и тихий. ' +
+        'Возьмите проводную гарнитуру или пишите прямо с телефона.</span>';
+    }
+    if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
+    srcNode = ctx.createMediaStreamSource(stream);
+    if(!proc){
+      proc = ctx.createScriptProcessor(4096, 1, 1);
+      proc.onaudioprocess = function(e){
+        var d = e.inputBuffer.getChannelData(0), peak = 0;
+        for(var i = 0; i < d.length; i++){ var v = Math.abs(d[i]); if(v > peak) peak = v; }
+        liveLevel = peak;
+        if(recording) buffers.push(new Float32Array(d));
+      };
+      sink = ctx.createGain(); sink.gain.value = 0;   // иначе микрофон заведётся в динамиках
+      proc.connect(sink); sink.connect(ctx.destination);
+    }
+    srcNode.connect(proc);
+    $("micBtn").textContent = "Микрофон включён";
+    $("micBtn").disabled = true;
+    render();
+    meter();
+    return true;
+  }
+
+  function meter(){
+    // шкала в децибелах: по долям сигнала нормальный голос рисуется ниточкой
+    var db = 20 * Math.log10(Math.max(liveLevel, 1e-4));
+    var pct = Math.max(0, Math.min(100, (db + 50) * 2));
+    $("meter").style.width = pct + "%";
+    $("meter").style.background = db > -3 ? "#A24B3C" : "#2F6E5E";
+    requestAnimationFrame(meter);
+  }
+
+  /* ── Запись ─────────────────────────────────────── */
+  function startRec(id){
+    if(!ctx){ $("hint").textContent = "Сначала включите микрофон."; return; }
+    curId = id; buffers = []; recording = true;
+    render();
+  }
+  async function stopRec(){
+    if(!recording) return;
+    recording = false;
+    var len = buffers.reduce(function(a, b){ return a + b.length; }, 0);
+    var pcm = new Float32Array(len), at = 0;
+    buffers.forEach(function(b){ pcm.set(b, at); at += b.length; });
+    buffers = [];
+    if(len < ctx.sampleRate * 0.25){
+      $("hint").textContent = "Слишком коротко — нажмите «Записать» и говорите после паузы.";
+      curId = null; render(); return;
+    }
+    await put(curId, {pcm: pcm, rate: ctx.sampleRate, at: Date.now()});
+    $("hint").textContent = "";
+    curId = null;
+    render();
+  }
+
+  async function play(id){
+    var rec = await get(id);
+    if(!rec) return;
+    var c = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    var buf = c.createBuffer(1, rec.pcm.length, rec.rate);
+    buf.copyToChannel(rec.pcm, 0);
+    var s = c.createBufferSource(); s.buffer = buf; s.connect(c.destination); s.start();
+  }
+
+  /* ── Обработка при выгрузке ─────────────────────────
+     Тишину по краям срезаем, низы режем, громкость выравниваем — то же,
+     что в студии для голоса диктора. Трогаем только при выгрузке: сырое
+     хранится как записано, переделать можно в любой момент. */
+  function tidy(pcm, rate){
+    var i, x, prev = 0, prevIn = 0, a = 0.985;
+    var out = new Float32Array(pcm.length);
+    for(i = 0; i < pcm.length; i++){          // срез низов, однополюсный
+      x = pcm[i];
+      prev = a * (prev + x - prevIn); prevIn = x;
+      out[i] = prev;
+    }
+    var win = Math.max(1, Math.round(rate * 0.02)), best = 0, lo = 0, hi = out.length;
+    var env = [];
+    for(i = 0; i + win <= out.length; i += win){
+      var s = 0;
+      for(var j = 0; j < win; j++) s += Math.abs(out[i + j]);
+      env.push(s / win);
+      if(env[env.length - 1] > best) best = env[env.length - 1];
+    }
+    var thr = best * 0.08;
+    for(i = 0; i < env.length; i++){ if(env[i] > thr){ lo = i * win; break; } }
+    for(i = env.length - 1; i >= 0; i--){ if(env[i] > thr){ hi = (i + 1) * win; break; } }
+    lo = Math.max(0, lo - Math.round(rate * 0.06));
+    hi = Math.min(out.length, hi + Math.round(rate * 0.10));
+    var cut = out.subarray(lo, hi);
+    var peak = 0;
+    for(i = 0; i < cut.length; i++){ var v = Math.abs(cut[i]); if(v > peak) peak = v; }
+    var k = peak > 0 ? 0.89 / peak : 1;
+    var res = new Float32Array(cut.length);
+    var fade = Math.min(Math.round(rate * 0.01), Math.floor(cut.length / 2));
+    for(i = 0; i < cut.length; i++){
+      var g = k;
+      if(i < fade) g *= i / fade;
+      if(i > cut.length - fade) g *= (cut.length - i) / fade;
+      res[i] = Math.max(-1, Math.min(1, cut[i] * g));
+    }
+    return res;
+  }
+
+  function toMp3(pcm, rate){
+    var i16 = new Int16Array(pcm.length);
+    for(var i = 0; i < pcm.length; i++) i16[i] = Math.max(-1, Math.min(1, pcm[i])) * 32767;
+    if(typeof lamejs === "undefined") return null;
+    var enc = new lamejs.Mp3Encoder(1, rate, 96), out = [], n = 1152;
+    for(var p = 0; p < i16.length; p += n){
+      var chunk = i16.subarray(p, p + n);
+      var b = enc.encodeBuffer(chunk);
+      if(b.length) out.push(new Int8Array(b));
+    }
+    var end = enc.flush();
+    if(end.length) out.push(new Int8Array(end));
+    return new Blob(out, {type:"audio/mpeg"});
+  }
+
+  /* ── Вид ────────────────────────────────────────── */
+  var have = {};
+  async function refreshHave(){
+    for(var i = 0; i < PEOPLE.length; i++){
+      var r = await get(PEOPLE[i][0]);
+      have[PEOPLE[i][0]] = r ? (r.pcm.length / r.rate) : 0;
+    }
+  }
+
+  function render(){
+    var box = $("list");
+    box.textContent = "";
+    PEOPLE.forEach(function(p){
+      var id = p[0], name = p[1];
+      var card = document.createElement("div");
+      card.className = "card";
+
+      var head = document.createElement("div");
+      head.className = "who";
+
+      var left = document.createElement("div");
+      var nm = document.createElement("div");
+      nm.className = "nm"; nm.textContent = name;
+      left.appendChild(nm);
+
+      var ph = document.createElement("input");
+      ph.className = "ph"; ph.value = phrases[id] || "";
+      ph.placeholder = "Фраза этого человека — например, «Привет, малыш»";
+      ph.addEventListener("input", function(){
+        phrases[id] = ph.value;
+        try{ localStorage.setItem(PKEY, JSON.stringify(phrases)); }catch(e){}
+      });
+      left.appendChild(ph);
+
+      var st = document.createElement("div");
+      st.className = "state" + (have[id] ? " ok" : "");
+      st.textContent = recording && curId === id ? "Идёт запись…"
+        : have[id] ? ("Записано, " + have[id].toFixed(1) + " с")
+        : "Пока не записано";
+      left.appendChild(st);
+      head.appendChild(left);
+
+      var right = document.createElement("div");
+      right.className = "row";
+      if(recording && curId === id){
+        var stop = document.createElement("button");
+        stop.className = "rec"; stop.textContent = "Стоп";
+        stop.onclick = stopRec;
+        right.appendChild(stop);
+      } else {
+        var rec = document.createElement("button");
+        rec.textContent = have[id] ? "Переписать" : "Записать";
+        rec.disabled = recording || !ctx;
+        rec.onclick = function(){ startRec(id); };
+        right.appendChild(rec);
+        if(have[id]){
+          var pl = document.createElement("button");
+          pl.textContent = "Послушать";
+          pl.onclick = function(){ play(id); };
+          right.appendChild(pl);
+        }
+      }
+      head.appendChild(right);
+      card.appendChild(head);
+      box.appendChild(card);
+    });
+
+    var done = PEOPLE.filter(function(p){ return have[p[0]]; }).length;
+    $("tip").textContent = "Записано " + done + " из " + PEOPLE.length;
+  }
+
+  $("micBtn").onclick = function(){ initMic(localStorage.getItem(MIC_KEY) || null); };
+
+  $("dump").onclick = async function(){
+    if(typeof JSZip === "undefined"){ $("tip").textContent = "Упаковщик не загрузился — обновите страницу."; return; }
+    var zip = new JSZip(), man = {}, n = 0;
+    $("tip").textContent = "Готовлю…";
+    for(var i = 0; i < PEOPLE.length; i++){
+      var id = PEOPLE[i][0];
+      var rec = await get(id);
+      if(!rec) continue;
+      var clean = tidy(rec.pcm, rec.rate);
+      var blob = toMp3(clean, rec.rate);
+      if(!blob) continue;
+      zip.file(id + ".mp3", blob);
+      man[id] = {name: PEOPLE[i][1], phrase: phrases[id] || "", seconds: +(clean.length / rec.rate).toFixed(2)};
+      n++;
+    }
+    if(!n){ $("tip").textContent = "Пока нечего выгружать."; return; }
+    zip.file("manifest.json", JSON.stringify(man, null, 1));
+    var out = await zip.generateAsync({type:"blob"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(out);
+    a.download = "golosa-semyi.zip";
+    a.click();
+    $("tip").textContent = "Готово: " + n + " записей.";
+  };
+
+  $("wipe").onclick = async function(){
+    if(!confirm("Стереть все записи с этого устройства?")) return;
+    await wipeAll();
+    await refreshHave();
+    render();
+  };
+
+  openDb().then(refreshHave).then(render);
+})();
+</script>
+</body>
+</html>
