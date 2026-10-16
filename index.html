@@ -757,6 +757,16 @@
     {id:"tractor", name:"Трактор",    art:"🚜", react:"drive",   cat:"farm"},
     {id:"dolphin", name:"Дельфин",    art:"🐬", react:"swim",   cat:"sea"},
     {id:"crab",    name:"Краб",     art:"🦀", react:"run",    cat:"sea"},
+    {id:"num1",  name:"Один",       art:"1️⃣", react:"bounce", cat:"numbers"},
+    {id:"num2",  name:"Два",        art:"2️⃣", react:"bounce", cat:"numbers"},
+    {id:"num3",  name:"Три",        art:"3️⃣", react:"bounce", cat:"numbers"},
+    {id:"num4",  name:"Четыре",     art:"4️⃣", react:"bounce", cat:"numbers"},
+    {id:"num5",  name:"Пять",       art:"5️⃣", react:"bounce", cat:"numbers"},
+    {id:"num6",  name:"Шесть",      art:"6️⃣", react:"bounce", cat:"numbers"},
+    {id:"num7",  name:"Семь",       art:"7️⃣", react:"bounce", cat:"numbers"},
+    {id:"num8",  name:"Восемь",     art:"8️⃣", react:"bounce", cat:"numbers"},
+    {id:"num9",  name:"Девять",     art:"9️⃣", react:"bounce", cat:"numbers"},
+    {id:"num10", name:"Десять",     art:"🔟", react:"bounce", cat:"numbers"},
     {id:"moon",    name:"Луна",       art:"🌙", react:"spin",   cat:"space"},
     {id:"book",    name:"Книжка",     art:"📖", react:"bounce", cat:"room"},
     {id:"cup",     name:"Чашка",      art:"☕", react:"bounce", cat:"room"},
@@ -795,7 +805,8 @@
     {id:"room",  name:"Дома"},
     {id:"yard",  name:"Во дворе"},
     {id:"sea",   name:"Море"},
-    {id:"space", name:"Небо"}
+    {id:"space", name:"Небо"},
+    {id:"numbers", name:"Цифры"}
   ];
   function themeName(id){
     for(var i = 0; i < THEMES.length; i++) if(THEMES[i].id === id) return THEMES[i].name;
@@ -1676,7 +1687,10 @@
      без указания авторства. К релизу все звуки надо будет обрезать и сжать —
      шестьдесят таких файлов в сборку не влезут. */
   var SFX_FILES = {};
-  ITEMS.forEach(function(i){ SFX_FILES[i.id] = "sfx/" + i.id + ".mp3"; });
+  ITEMS.forEach(function(i){
+    // у цифр записи нет и быть не должно — им играем колокольчик
+    if(i.cat !== "numbers") SFX_FILES[i.id] = "sfx/" + i.id + ".mp3";
+  });
 
   // Особые случаи. У остальных — с начала файла и не длиннее 2,6 секунды:
   // это примерно длина реакции, а звук должен кончаться вместе с ней.
@@ -1784,6 +1798,7 @@
   }
 
   function itemSound(item){
+    if(item.cat === "numbers") return bell();
     var o = SFX_OPTS[item.id] || {};
     if(playSample(item.id, o.offset, o.dur, o)) return;
     loadSample(item.id);                       // не успел загрузиться — к следующему разу успеет
@@ -2380,7 +2395,7 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-22";
+  var VERSION = "proto-23";
   /* Что изменилось в этой версии — текст живёт рядом с номером, а не в вёрстке,
      чтобы номер и описание нельзя было развести по разным местам. Показывается
      в настройках и уезжает вместе с отзывом. */
@@ -2390,6 +2405,7 @@
     "Тычок по карточке, которая уже ушла со сцены, не засчитывается следующей паре.",
     "Короткие звуки больше не глохнут: четверть секунды плавного нарастания съедала удар, и велосипедный звонок звучал гудением вместо «дзинь».",
     "На входе появилась кнопка «Играть по теме»: родитель выбирает тему, и ребёнку показываются только её предметы — все сразу, не дожидаясь коробок.",
+    "Появилась тема «Цифры»: десять картинок от одного до десяти, рядом с каждой цифрой столько машинок, сколько она значит.",
     "В разборе видно, сколько раз ребёнок отвечал, сколько раз ошибался и понадобилась ли подсказка, плюс сводка по темам. Доля считается от отвеченных раундов, брошенные на полпути больше не портят статистику."
   ];
   (function(){
