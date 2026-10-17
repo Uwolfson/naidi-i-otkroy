@@ -200,6 +200,20 @@
   var idx = 0, filter = "all";
   var clips = {};               // key -> {pcm, rate, peak, rms, noise, dur}
 
+  /* Что уже лежит в игре. Сырые записи живут в памяти того браузера, где их
+     делали, а готовые mp3 — в папке voice. Открыв студию на другом
+     устройстве, видишь пустой список и думаешь, что всё пропало, хотя сто
+     восемь фраз давно в игре. Спрашиваем манифест и помечаем их. */
+  var published = {};
+  fetch("voice/manifest.json", {cache: "no-store"})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(m){
+      if(!m || !m.keys) return;
+      m.keys.forEach(function(k){ published[k] = true; });
+      render();
+    })
+    .catch(function(){});
+
   /* ── Хранилище ───────────────────────────────────────
      Сырые записи переживают перезагрузку: 108 фраз за один присест —
      это час работы, и терять его из-за случайно закрытой вкладки нельзя. */
@@ -805,7 +819,8 @@
     if(!$("curHint").querySelector(".err")) $("curHint").textContent = p.hint;
     $("playBtn").disabled = !rec;
 
-    var done = Object.keys(clips).length;
+    var done = 0;
+    PHRASES.forEach(function(x){ if(clips[x.key] || published[x.key]) done++; });
     $("progBar").style.width = (done / PHRASES.length * 100) + "%";
     $("progText").textContent = done + " из " + PHRASES.length;
 
@@ -847,16 +862,17 @@
     ul.textContent = "";
     PHRASES.forEach(function(p, i){
       var rec = clips[p.key], probs = problems(rec), redo = redoReason(p.key, rec);
-      if(filter === "todo" && rec) return;
+      var inGame = !rec && published[p.key];
+      if(filter === "todo" && (rec || inGame)) return;
       if(filter === "warn" && (!rec || (!probs.length && !redo))) return;
       if(filter === "redo" && !redo) return;
       var li = document.createElement("li");
-      li.className = (rec ? ((probs.length || redo) ? "warn" : "done") : "") + (i === idx ? " cur" : "");
+      li.className = (rec ? ((probs.length || redo) ? "warn" : "done") : (inGame ? "done" : "")) + (i === idx ? " cur" : "");
       li.innerHTML = '<span class="dot"></span><span class="txt"></span><span class="k"></span>';
       li.querySelector(".txt").textContent = p.text;
       li.querySelector(".k").textContent = rec
         ? (redo ? "переписать" : probs.length ? probs[0] : rec.dur.toFixed(1) + "с")
-        : "—";
+        : (inGame ? "в игре" : "—");
       li.addEventListener("click", function(){ idx = i; render(); window.scrollTo({top:0,behavior:"smooth"}); });
       ul.appendChild(li);
     });
