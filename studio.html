@@ -807,6 +807,8 @@
     var redo = redoReason(cur().key, rec);
     if(redo){ el.className = "redo"; el.textContent = "ПЕРЕПИСАТЬ"; return; }
     if(rec){ el.className = "ok"; el.textContent = "ЗАПИСАНО ✓  " + rec.dur.toFixed(1) + " с"; return; }
+    // запись сделана раньше и на другом устройстве, но в игре она есть
+    if(published[cur().key]){ el.className = "ok"; el.textContent = "ЕСТЬ В ИГРЕ"; return; }
     el.className = "none"; el.textContent = "НЕ ЗАПИСАНО";
   }
 
@@ -856,9 +858,16 @@
     renderList();
   }
 
+  var FILTER_EMPTY = {
+    todo: "Всё записано — ничего не осталось.",
+    warn: "Замечаний нет ни к одной записи.",
+    redo: "Переписывать нечего: отмеченные фразы уже перезаписаны."
+  };
+
   function renderList(){
     var ul = $("list");
     ul.textContent = "";
+    var shown = 0;
     PHRASES.forEach(function(p, i){
       var rec = clips[p.key], probs = problems(rec), redo = redoReason(p.key, rec);
       var inGame = !rec && published[p.key];
@@ -873,8 +882,16 @@
         ? (redo ? "переписать" : probs.length ? probs[0] : rec.dur.toFixed(1) + "с")
         : (inGame ? "в игре" : "—");
       li.addEventListener("click", function(){ idx = i; render(); window.scrollTo({top:0,behavior:"smooth"}); });
-      ul.appendChild(li);
+      ul.appendChild(li); shown++;
     });
+    // пустой список под фильтром выглядит как поломка — объясняем словами
+    if(!shown && FILTER_EMPTY[filter]){
+      var li = document.createElement("li");
+      li.className = "done";
+      li.innerHTML = '<span class="dot"></span><span class="txt"></span><span class="k"></span>';
+      li.querySelector(".txt").textContent = FILTER_EMPTY[filter];
+      ul.appendChild(li);
+    }
   }
 
   function play(){
