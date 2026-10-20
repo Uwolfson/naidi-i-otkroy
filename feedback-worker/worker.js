@@ -140,7 +140,14 @@ async function fromTelegram(request, env) {
     from: [u.first_name, u.last_name].filter(Boolean).join(" ") ||
       u.username || "?",
     kind: update.edited_message ? "edited" : "message",
-    text: msg.text || msg.caption || describe(msg),
+    /* Подпись и вложение — не «или», а «и». Раньше здесь стояло
+       text || caption || describe(msg), и у фотографии с подписью
+       описание не доходило: в журнал попадала одна подпись, а file_id
+       терялся. Так пропали четыре семейных снимка — их переслали с
+       подписью «Фото от Татьяна». */
+    text: [msg.text || msg.caption || "", hasFile(msg) ? describe(msg) : ""]
+      .filter(Boolean).join("
+"),
     reply_to: msg.reply_to_message ? msg.reply_to_message.message_id : undefined,
   });
   return reply("ok", 200);
@@ -239,6 +246,11 @@ function authorized(request, env) {
 /* Для вложений запоминаем file_id: без него присланное фото не забрать —
    бот не умеет читать историю чата, а в журнале оставалась одна пометка
    «[photo]». Для фото берём самый крупный размер, он идёт последним. */
+function hasFile(msg) {
+  return Boolean(msg.photo || msg.video || msg.voice || msg.audio || msg.document ||
+                 msg.sticker || msg.animation || msg.video_note);
+}
+
 function describe(msg) {
   const kinds = ["photo", "video", "voice", "audio", "document", "sticker",
     "animation", "video_note", "new_chat_members", "left_chat_member"];
