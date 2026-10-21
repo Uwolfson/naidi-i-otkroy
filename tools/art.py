@@ -5,10 +5,13 @@
    полуметра, и мелкий предмет в большом поле он просто не разберёт.
    Поля оставляем 4%: без них вырезка липнет к краю карточки.
 
-       python tools/art.py <id> <url> [--crop x0,y0,x1,y1] [--model NAME]
+       python tools/art.py <id> <url> [--crop x0,y0,x1,y1] [--clear x0,y0,x1,y1]
+                           [--model NAME]
 
    Обрезка нужна, когда предмет снят в куче: вырезаем сначала руками тот
-   экземпляр, который пойдёт в игру, а уже потом снимаем фон.
+   экземпляр, который пойдёт в игру, а уже потом снимаем фон. Если рядом
+   с ним в кадр лезет обрубок соседа, --clear стирает его прямоугольником
+   уже после вырезания — координаты внутри обрезанного кадра.
 """
 import sys, io, os, subprocess, tempfile
 import numpy as np
@@ -37,13 +40,24 @@ def solid(img):
     h, w = a.shape
     edge = cv2.copyMakeBorder((a > 40).astype(np.uint8) * 255, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
     cv2.floodFill(edge, np.zeros((h + 4, w + 4), np.uint8), (0, 0), 128)
-    a = np.where(edge[1:-1, 1:-1] == 0, 255, a).astype(np.uint8)
+    # Фон, до которого заливка не добралась, — это или дырка в предмете, или
+    # просвет внутри него: у маракасов между ручками видна стена. Дырку
+    # закрываем, просвет оставляем прозрачным, разделяя их по площади.
+    holes = (edge[1:-1, 1:-1] == 0).astype(np.uint8)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(holes, 8)
+    body = int((a > 40).sum())
+    for i in range(1, n):
+        if st[i, cv2.CC_STAT_AREA] < body * 0.02: a[lab == i] = 255
     return Image.fromarray(np.dstack([np.asarray(img.convert("RGB")), a]), "RGBA")
 
-def make(name, url, crop=None, model="isnet-general-use"):
+def make(name, url, crop=None, model="isnet-general-use", clear=None):
     src = fetch(url)
     if crop: src = src.crop(crop)
     cut = solid(remove(src, session=new_session(model)).convert("RGBA"))
+    if clear:
+        a = np.asarray(cut.getchannel("A")).copy()
+        a[clear[1]:clear[3], clear[0]:clear[2]] = 0
+        cut.putalpha(Image.fromarray(a))
     # рамку считаем по заметным точкам: слабый ореол вокруг выреза иначе
     # съедает треть кадра, и предмет выходит мелким
     bb = cut.getchannel("A").point(lambda v: 255 if v > 25 else 0).getbbox()
@@ -64,6 +78,10 @@ if __name__ == "__main__":
     crop = model = None
     if "--crop" in a:
         i = a.index("--crop"); crop = tuple(int(v) for v in a[i+1].split(",")); del a[i:i+2]
+    if "--clear" in a:
+        i = a.index("--clear"); clear = tuple(int(v) for v in a[i+1].split(",")); del a[i:i+2]
+    else:
+        clear = None
     if "--model" in a:
         i = a.index("--model"); model = a[i+1]; del a[i:i+2]
-    make(a[0], a[1], crop, model or "isnet-general-use")
+    make(a[0], a[1], crop, model or "isnet-general-use", clear)
