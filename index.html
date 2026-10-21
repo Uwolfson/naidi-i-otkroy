@@ -314,6 +314,17 @@
     60%{transform:rotate(360deg) scale(1.35) translateY(-8vh)}
     100%{transform:rotate(720deg) scale(1)}
   }
+  .r-shake .art{animation:r-shake 2.2s cubic-bezier(.36,.07,.19,.97);}
+  @keyframes r-shake{
+    0%{transform:rotate(0) scale(1)}
+    12%{transform:rotate(-9deg) scale(1.06)}
+    26%{transform:rotate(8deg) scale(1.06)}
+    40%{transform:rotate(-7deg) scale(1.08)}
+    54%{transform:rotate(6deg) scale(1.08)}
+    68%{transform:rotate(-4deg) scale(1.05)}
+    82%{transform:rotate(3deg) scale(1.03)}
+    100%{transform:rotate(0) scale(1)}
+  }
   .r-swim .art{animation:r-swim 2.8s ease-in-out;}
   @keyframes r-swim{
     0%{transform:translate(0,0) rotate(0) scaleX(1)}
@@ -767,6 +778,18 @@
     {id:"num8",  name:"Восемь машинок",     art:"8️⃣", react:"bounce", cat:"numbers"},
     {id:"num9",  name:"Девять машинок",     art:"9️⃣", react:"bounce", cat:"numbers"},
     {id:"num10", name:"Десять машинок",     art:"🔟", react:"bounce", cat:"numbers"},
+    {id:"piano",     name:"Фортепиано",  art:"🎹", react:"bounce", cat:"music"},
+    {id:"guitar",    name:"Гитара",      art:"🎸", react:"shake",  cat:"music"},
+    {id:"violin",    name:"Скрипка",     art:"🎻", react:"shake",  cat:"music"},
+    {id:"drums",     name:"Барабаны",    art:"🥁", react:"bounce", cat:"music"},
+    {id:"sax",       name:"Саксофон",    art:"🎷", react:"shake",  cat:"music"},
+    {id:"trumpet",   name:"Труба",       art:"🎺", react:"shake",  cat:"music"},
+    {id:"accordion", name:"Аккордеон",   art:"🪗", react:"shake",  cat:"music"},
+    {id:"flute",     name:"Флейта",      art:"🪈", react:"shake",  cat:"music"},
+    {id:"maracas",   name:"Маракасы",    art:"🪇", react:"shake",  cat:"music"},
+    {id:"xylo",      name:"Ксилофон",    art:"🎼", react:"bounce", cat:"music"},
+    {id:"harp",      name:"Арфа",        art:"🎶", react:"shake",  cat:"music"},
+    {id:"bagpipe",   name:"Волынка",     art:"🎵", react:"shake",  cat:"music"},
     {id:"moon",    name:"Луна",       art:"🌙", react:"spin",   cat:"space"},
     {id:"book",    name:"Книжка",     art:"📖", react:"bounce", cat:"room"},
     {id:"cup",     name:"Чашка",      art:"☕", react:"bounce", cat:"room"},
@@ -806,7 +829,8 @@
     {id:"yard",  name:"Во дворе"},
     {id:"sea",   name:"Море"},
     {id:"space", name:"Небо"},
-    {id:"numbers", name:"Цифры"}
+    {id:"numbers", name:"Цифры"},
+    {id:"music", name:"Музыкальные инструменты"}
   ];
   function themeName(id){
     for(var i = 0; i < THEMES.length; i++) if(THEMES[i].id === id) return THEMES[i].name;
@@ -1695,7 +1719,27 @@
   // Особые случаи. У остальных — с начала файла и не длиннее 2,6 секунды:
   // это примерно длина реакции, а звук должен кончаться вместе с ней.
   var SFX_OPTS = {
-    heli: {offset:6, dur:2.7, gain:0.5, rateFrom:0.72, rateOver:1}
+    heli: {offset:6, dur:2.7, gain:0.5, rateFrom:0.72, rateOver:1},
+
+    /* Инструменты. Файлы уже обрезаны по нужному окну (tools/trim.py), и
+       смещение везде нулевое — но указать его всё равно надо: без него игра
+       у записи длиннее восьми секунд сама прыгает на треть файла, а у
+       музыкальной фразы весь характер инструмента в первом ударе.
+       Усиление выровнено по громкости остальных записей (среднеквадратичная
+       около 0,14): труба, аккордеон, ксилофон и волынка записаны тихо,
+       маракасы — на грани перегруза. */
+    piano:     {offset:0, gain:0.95},
+    guitar:    {offset:0},
+    violin:    {offset:0, gain:0.8},
+    drums:     {offset:0, gain:0.95},   // удар и так на пределе: выше — хрип
+    sax:       {offset:0, gain:0.7},
+    trumpet:   {offset:0, gain:3},
+    accordion: {offset:0, gain:2},
+    flute:     {offset:0, gain:0.8},
+    maracas:   {offset:0, gain:0.7},
+    xylo:      {offset:0, gain:2},
+    harp:      {offset:0, gain:1.1},
+    bagpipe:   {offset:0, gain:2.2}
   };
 
 
@@ -2395,11 +2439,13 @@
   // игры (например, в артефакте Claude) остаётся путь через «Поделиться».
   var FEEDBACK_ENDPOINT = location.hostname === "uwolfson.github.io"
     ? "https://naidi-feedback.wolfson-u.workers.dev" : "";
-  var VERSION = "proto-27";
+  var VERSION = "proto-28";
   /* Что изменилось в этой версии — текст живёт рядом с номером, а не в вёрстке,
      чтобы номер и описание нельзя было развести по разным местам. Показывается
      в настройках и уезжает вместе с отзывом. */
   var VERSION_NOTE = [
+    "Появилась тема «Музыкальные инструменты»: двенадцать инструментов, у каждого свой звук — по нажатию играет именно он.",
+    "Инструмент в ответ покачивается, будто на нём играют.",
     "Вопрос звучит первым, а картинки появляются уже под голос: раньше они были на экране раньше вопроса, и ребёнок бил по ним не слушая.",
     "После верного нажатия вторая картинка исчезает сразу — ничто не отвлекает от ожившего предмета.",
     "Тычок по карточке, которая уже ушла со сцены, не засчитывается следующей паре.",
